@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>君記早餐 · Demo</title>
+<style>
+  :root{
+    --bg:#150d08; --wood:#2a1a10; --cream:#f6efe2; --ink:#241a12;
+    --red:#c8402f; --green:#3f7d4e; --amber:#e0a33c; --muted:#9c8b78;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--cream);font-family:"Noto Sans TC","PingFang HK","Microsoft JhengHei",sans-serif;display:flex;justify-content:center;align-items:center;overflow:hidden}
+  #app{position:relative;width:min(100vw,430px);height:min(100vh,860px);background:linear-gradient(#1d1209,#150d08);display:flex;flex-direction:column;overflow:hidden}
+  header{padding:calc(14px + env(safe-area-inset-top,0px)) 16px 8px;display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1px solid #3a2717}
+  .brand{font-size:19px;font-weight:700;letter-spacing:2px}
+  .brand small{display:block;font-size:10px;color:var(--muted);letter-spacing:1px;margin-top:2px}
+  .stats{text-align:right;font-size:11px;color:var(--muted);line-height:1.5}
+  .stats b{color:var(--cream);font-size:14px}
+  /* 客人區 */
+  #stage{flex:1;display:flex;flex-direction:column;justify-content:center;padding:10px 14px 0;position:relative}
+  .cust{display:flex;gap:10px;align-items:flex-start;margin-top:6px;transform:scale(1.06);transform-origin:center}
+  .face{width:54px;height:54px;border-radius:50%;background:#3a2717;display:flex;align-items:center;justify-content:center;font-size:26px;flex:0 0 auto;border:2px solid #513a24}
+  .bubble{background:var(--cream);color:var(--ink);border-radius:14px 14px 14px 4px;padding:10px 12px;flex:1;position:relative}
+  .who{font-size:11px;color:#7a6a58;margin-bottom:6px}
+  .order{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{background:#fff;border:1.5px solid #d9c9b0;border-radius:9px;padding:7px 11px;font-size:15px;font-weight:600;display:flex;align-items:center;gap:5px}
+  .chip .mod{font-size:11.5px;color:#b04a2a;font-weight:700}
+  .patience{height:5px;background:#3a2717;border-radius:3px;margin-top:10px;overflow:hidden}
+  .patience i{display:block;height:100%;background:var(--green);width:100%;transition:width .2s linear}
+  /* 托盤 */
+  #board{margin:14px 14px 0;padding:12px 14px;background:#1e1409;border:1px solid #3a2717;border-radius:12px;font-size:11.5px;color:#9c8b78;line-height:1.8}
+  .brow{display:flex;justify-content:space-between;color:#cbbba6;font-size:11px;margin-bottom:6px}
+  .brow b{color:#e0a33c;font-size:13px}
+  .bmenu{color:#8d7c69}
+  .btip{margin-top:6px;color:#6f6152;font-size:10.5px}
+  #tray{min-height:64px;margin:10px 14px 0;border:1.5px dashed #4a3521;border-radius:12px;padding:8px;display:flex;flex-wrap:wrap;gap:6px;align-content:flex-start}
+  #tray .t{background:#efe3cf;color:#241a12;border-radius:8px;padding:6px 9px;font-size:12px;font-weight:700}
+  #tray .empty{color:#6b5a46;font-size:11px;padding:6px}
+  /* 操作區 */
+  #deck{padding:10px 14px 16px;background:#1b1109;border-top:1px solid #3a2717}
+  .row{display:flex;gap:8px;margin-bottom:8px}
+  .btn{flex:1;background:#2c1c10;border:1.5px solid #4a3521;color:var(--cream);border-radius:12px;padding:13px 6px;font-size:14px;font-weight:700;font-family:inherit}
+  .btn:active{transform:scale(.97)}
+  .btn.serve{background:var(--green);border-color:#4f9663}
+  .btn.clear{background:#3a2415;border-color:#5a3a22;flex:0 0 88px;font-size:12px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  /* 彈出選項 */
+  #sheet{position:absolute;inset:auto 0 0 0;background:#221509;border-top:2px solid #4a3521;border-radius:16px 16px 0 0;padding:14px;transform:translateY(110%);transition:transform .22s}
+  #sheet.on{transform:translateY(0)}
+  #sheet h4{font-size:14px;margin-bottom:10px;color:var(--cream)}
+  .opts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+  .opt{background:#2c1c10;border:1.5px solid #4a3521;border-radius:10px;padding:9px 12px;font-size:13px;color:#cbbba6;font-family:inherit}
+  .opt.on{background:#e0a33c;border-color:#f0bd63;color:#241a12;font-weight:700}
+  .toast{position:absolute;top:84px;left:50%;transform:translateX(-50%);padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;opacity:0;transition:opacity .2s,top .2s;pointer-events:none}
+  .toast.show{opacity:1;top:74px}
+  .ok{background:#3f7d4e;color:#fff}
+  .bad{background:#c8402f;color:#fff}
+  #end{position:absolute;inset:0;background:rgba(10,6,3,.94);display:none;flex-direction:column;justify-content:center;align-items:center;padding:30px;text-align:center}
+  #end h2{font-size:26px;letter-spacing:3px;margin-bottom:6px}
+  #end p{color:var(--muted);font-size:12px;line-height:2}
+  #end b{color:var(--amber);font-size:22px}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand">君記早餐<small>KWAAN KEE · 第 1 朝</small></div>
+    <div class="stats">
+      <div>營業額 <b id="money">$0</b></div>
+      <div>好評 <b id="good">0</b>　負評 <b id="bad">0</b></div>
+    </div>
+  </header>
+
+  <div id="stage">
+    <div class="cust">
+      <div class="face" id="face">🧑</div>
+      <div class="bubble">
+        <div class="who" id="who">客人</div>
+        <div class="order" id="order"></div>
+        <div class="patience"><i id="bar"></i></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="board">
+      <div class="brow"><span>今朝第 <b id="pnum">1</b> / 5 位</span><span id="clock">06:12</span></div>
+      <div class="bmenu">水吧　奶茶 18・咖啡 18・檸茶 20・檸水 18<br>爐頭　煎蛋多士 16・餐蛋麵 28・菠蘿油 14・西多士 28</div>
+      <div class="btip">順序：揀嘢 → 加選項（凍／少甜／走奶）→ 加入托盤 → 出餐</div>
+    </div>
+
+  <div id="tray"><span class="empty">托盤空</span></div>
+
+  <div id="deck">
+    <div class="row">
+      <button class="btn" onclick="openSheet('drink')">水吧</button>
+      <button class="btn" onclick="openSheet('food')">爐頭</button>
+    </div>
+    <div class="row">
+      <button class="btn serve" onclick="serve()">出餐</button>
+      <button class="btn clear" onclick="clearTray()">清空</button>
+    </div>
+  </div>
+
+  <div id="sheet"></div>
+  <div class="toast" id="toast"></div>
+  <div id="end">
+    <h2>收舖</h2>
+    <p>營業額 <b id="emoney">$0</b></p>
+    <p id="eline">好評 0　負評 0</p>
+    <p style="margin-top:16px">再撳一下重開</p>
+  </div>
+</div>
+
+<script>
+const DRINKS = ["奶茶","咖啡","檸茶","檸水","好立克","阿華田"];
+const FOODS  = ["煎蛋多士","餐蛋麵","菠蘿油","火腿通粉","西多士","蛋治"];
+const D_OPTS = ["凍","少甜","走甜","走奶","飛冰"];
+const F_OPTS = ["轉多士","加蛋","加辣","走青"];
+const PRICE = {"奶茶":18,"咖啡":18,"檸茶":20,"檸水":18,"好立克":18,"阿華田":18,
+               "煎蛋多士":16,"餐蛋麵":28,"菠蘿油":14,"火腿通粉":22,"西多士":28,"蛋治":22};
+
+let tray=[], money=0, good=0, bad=0, idx=0, timer=null, left=0, total=0;
+
+const CUSTOMERS=[
+ {face:"🧑‍💼", who:"趕返工 · 阿俊", items:[{n:"奶茶", o:["凍","少甜"]},{n:"蛋治", o:[]}], pat:16},
+ {face:"👩", who:"學生 · 阿妹", items:[{n:"檸茶", o:["凍","飛冰"]},{n:"西多士", o:["加辣"]}], pat:22},
+ {face:"👴", who:"熟客 · 陳伯", items:[{n:"奶茶", o:["走甜","走奶"]}], pat:24},
+ {face:"🛵", who:"外賣 · 輝仔", items:[{n:"餐蛋麵", o:[]},{n:"檸水", o:["少甜"]}], pat:14},
+ {face:"🧑‍🍳", who:"街坊 · 強哥", items:[{n:"火腿通粉", o:["轉多士"]},{n:"咖啡", o:["凍"]}], pat:20},
+];
+
+function updateStats(){
+  document.getElementById("money").textContent="$"+money;
+  document.getElementById("good").textContent=good;
+  document.getElementById("bad").textContent=bad;
+  const p=document.getElementById("pnum"); if(p) p.textContent=Math.min(idx+1,5);
+}
+function render(){
+  const c=CUSTOMERS[idx];
+  document.getElementById("face").textContent=c.face;
+  document.getElementById("who").textContent=c.who;
+  document.getElementById("order").innerHTML=c.items.map(i=>
+    `<span class="chip">${i.n}${i.o.map(o=>`<span class="mod">·${o}</span>`).join("")}</span>`).join("");
+  drawTray();
+}
+function drawTray(){
+  const t=document.getElementById("tray");
+  if(!tray.length){t.innerHTML='<span class="empty">托盤空</span>';return;}
+  t.innerHTML=tray.map(i=>`<span class="t">${i.n}${i.o.length?" · "+i.o.join("·"):""}</span>`).join("");
+}
+function openSheet(kind){
+  const list = kind==="drink"?DRINKS:FOODS;
+  const opts = kind==="drink"?D_OPTS:F_OPTS;
+  const s=document.getElementById("sheet");
+  s.innerHTML=`<h4>${kind==="drink"?"水吧":"爐頭"}</h4>
+    <div class="opts" id="items">${list.map(n=>`<button class="opt" onclick="pickItem('${n}')">${n}</button>`).join("")}</div>
+    <div class="opts" id="mods">${opts.map(o=>`<button class="opt" onclick="toggleMod('${o}')">${o}</button>`).join("")}</div>
+    <div class="row"><button class="btn serve" onclick="addToTray()">加入托盤</button>
+    <button class="btn clear" onclick="closeSheet()">取消</button></div>`;
+  s.classList.add("on");
+  s.dataset.kind=kind; s.dataset.item=""; window._mods=[];
+}
+function pickItem(n){document.querySelectorAll("#items .opt").forEach(b=>b.classList.toggle("on",b.textContent===n));document.getElementById("sheet").dataset.item=n;}
+function toggleMod(o){const b=[...document.querySelectorAll("#mods .opt")].find(x=>x.textContent===o);b.classList.toggle("on");
+  window._mods=[...document.querySelectorAll("#mods .opt.on")].map(x=>x.textContent);}
+function closeSheet(){document.getElementById("sheet").classList.remove("on");}
+function addToTray(){
+  const s=document.getElementById("sheet"), n=s.dataset.item;
+  if(!n){toast("未揀嘢","bad");return;}
+  tray.push({n,o:window._mods.sort()});
+  drawTray(); closeSheet();
+}
+function clearTray(){tray=[];drawTray();}
+function toast(msg,cls){
+  const t=document.getElementById("toast");t.textContent=msg;t.className="toast show "+cls;
+  setTimeout(()=>t.className="toast "+cls,900);
+}
+function eq(a,b){return JSON.stringify(a)===JSON.stringify(b);}
+function serve(){
+  const c=CUSTOMERS[idx];
+  const want=c.items.map(i=>({n:i.n,o:[...i.o].sort()}));
+  const ok=tray.length===want.length && want.every(w=>tray.some(t=>eq(t,w)));
+  if(ok){
+    money+=want.reduce((s,i)=>s+PRICE[i.n],0); good++;
+    toast("✓ 正確","ok");
+  }else{
+    bad++; toast("✗ 做錯單","bad");
+  }
+  tray=[]; drawTray(); updateStats(); next();
+}
+function next(){
+  clearInterval(timer); idx++;
+  if(idx>=CUSTOMERS.length){endGame();return;}
+  render(); updateStats(); left=CUSTOMERS[idx].pat; total=left;
+  timer=setInterval(()=>{
+    left-=0.2;
+    document.getElementById("bar").style.width=Math.max(0,left/total*100)+"%";
+    if(left<=0){clearInterval(timer);bad++;toast("客人走咗","bad");tray=[];drawTray();next();}
+  },200);
+}
+function endGame(){
+  clearInterval(timer);
+  document.getElementById("emoney").textContent="$"+money;
+  document.getElementById("eline").textContent=`好評 ${good}　負評 ${bad}`;
+  document.getElementById("end").style.display="flex";
+  document.getElementById("end").onclick=()=>location.reload();
+}
+document.getElementById("money").textContent="$0";
+idx=-1; next();
+
+// ?auto=1 → 自動示範（錄影用）
+if(location.search.includes("auto")){
+  const script=[
+    ()=>{openSheet("drink");pickItem("奶茶");toggleMod("凍");toggleMod("少甜");addToTray();},
+    ()=>{openSheet("food");pickItem("蛋治");addToTray();},
+    ()=>serve(),
+    ()=>{openSheet("drink");pickItem("檸茶");toggleMod("凍");toggleMod("飛冰");addToTray();},
+    ()=>{openSheet("food");pickItem("西多士");toggleMod("加辣");addToTray();},
+    ()=>serve(),
+    ()=>{openSheet("drink");pickItem("奶茶");toggleMod("走甜");toggleMod("走奶");addToTray();},
+    ()=>serve(),
+    ()=>{openSheet("food");pickItem("餐蛋麵");addToTray();},
+    ()=>{openSheet("drink");pickItem("檸水");toggleMod("少甜");addToTray();},
+    ()=>serve(),
+    ()=>{openSheet("food");pickItem("火腿通粉");toggleMod("轉多士");addToTray();},
+    ()=>{openSheet("drink");pickItem("咖啡");toggleMod("凍");addToTray();},
+    ()=>serve(),
+  ];
+  setTimeout(()=>{let i=0;const t=setInterval(()=>{if(i>=script.length){clearInterval(t);return;}script[i++]();},1100);},800);
+}
+</script>
+</body>
+</html>
