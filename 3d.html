@@ -186,9 +186,9 @@ counterTop.position.set(0,1.36,.6); counterTop.castShadow = true; scene.add(coun
 
 /* 暖簾 */
 const noren = new THREE.Mesh(new THREE.PlaneGeometry(3.2,1.0), new THREE.MeshStandardMaterial({map:seigaiTex, roughness:.9, side:THREE.DoubleSide}));
-noren.position.set(0,2.55,-2.55); scene.add(noren);
+noren.position.set(0,2.12,-2.55); scene.add(noren);
 const crest = new THREE.Mesh(new THREE.CircleGeometry(.26,24), new THREE.MeshBasicMaterial({color:0xc0392b}));
-crest.position.set(0,2.6,-2.52); scene.add(crest);
+crest.position.set(0,2.16,-2.52); scene.add(crest);
 
 /* 檯面小物 */
 function cup(x,z,c){
@@ -288,7 +288,7 @@ function sign(text, w, x, y, z){
 sign('水吧', 1.5, -2.45, 1.95, -1.15);
 sign('爐頭', 1.5, .7, 1.95, -1.25);
 sign('出餐', 1.2, 3.5, 1.75, -1.35);
-sign('君記早餐', 3.2, 0, 3.1, -2.8);
+sign('君記早餐', 3.4, 0, 3.62, -2.78);
 
 /* ---------- 相機自適應 ---------- */
 function resize(){
