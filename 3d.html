@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>君記早餐 3D</title>
+<style>
+ :root{--cream:#f6efe2;--ink:#241a12;--amber:#e0a33c;--green:#3f7d4e;--red:#c8402f;--muted:#9c8b78}
+ *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+ html,body{height:100%;overflow:hidden;background:#0f0906;font-family:"Noto Sans TC","PingFang HK",sans-serif}
+ #c{position:fixed;inset:0;width:100%;height:100%;display:block}
+ .ui{position:fixed;left:0;right:0;pointer-events:none}
+ #top{top:0;padding:calc(10px + env(safe-area-inset-top)) 14px 8px;display:flex;justify-content:space-between;align-items:flex-start;color:var(--cream)}
+ .brand{font-size:17px;font-weight:700;letter-spacing:2px;text-shadow:0 2px 8px #000}
+ .brand small{display:block;font-size:9px;color:#c9b79f;letter-spacing:1px;font-weight:400}
+ .stats{font-size:10px;text-align:right;color:#c9b79f;line-height:1.6;text-shadow:0 1px 4px #000}
+ .stats b{color:#fff;font-size:13px}
+ #orderCard{top:78px;left:14px;right:14px;background:rgba(246,239,226,.96);color:var(--ink);border-radius:14px;padding:10px 12px;pointer-events:auto;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+ #who{font-size:10px;color:#7a6a58;margin-bottom:5px}
+ #chips{display:flex;flex-wrap:wrap;gap:6px}
+ .chip{background:#fff;border:1.5px solid #d9c9b0;border-radius:8px;padding:5px 9px;font-size:14px;font-weight:700}
+ .mod{color:#b04a2a;font-size:11px}
+ #barWrap{height:4px;background:#e2d4c0;border-radius:2px;margin-top:8px;overflow:hidden}
+ #bar{height:100%;width:100%;background:var(--green);transition:width .2s linear}
+ #trayBar{bottom:0;padding:10px 14px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(transparent,rgba(15,9,6,.92) 30%);pointer-events:auto}
+ #tray{min-height:38px;display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+ #tray .t{background:#efe3cf;color:var(--ink);border-radius:7px;padding:5px 9px;font-size:12px;font-weight:700}
+ #tray .e{color:#7a6a58;font-size:11px;padding:6px 2px}
+ .btns{display:flex;gap:8px}
+ .b{flex:1;background:rgba(44,28,16,.92);border:1.5px solid #5a3f27;color:var(--cream);border-radius:12px;padding:13px 4px;font-size:13px;font-weight:700;font-family:inherit}
+ .b.g{background:var(--green);border-color:#4f9663}
+ .b:active{transform:scale(.97)}
+ #sheet{position:fixed;left:0;right:0;bottom:0;background:#221509;border-top:2px solid #4a3521;border-radius:16px 16px 0 0;padding:14px;transform:translateY(110%);transition:transform .22s;pointer-events:auto}
+ #sheet.on{transform:translateY(0)}
+ #sheet h4{color:var(--cream);font-size:14px;margin-bottom:9px}
+ .opts{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:9px}
+ .opt{background:#2c1c10;border:1.5px solid #4a3521;border-radius:9px;padding:9px 11px;font-size:12.5px;color:#cbbba6;font-family:inherit}
+ .opt.on{background:var(--amber);border-color:#f0bd63;color:#241a12;font-weight:700}
+ #toast{position:fixed;top:150px;left:50%;transform:translateX(-50%);padding:9px 16px;border-radius:20px;font-size:13px;font-weight:700;opacity:0;transition:.2s;pointer-events:none}
+ #toast.on{opacity:1}
+ .ok{background:var(--green);color:#fff}.bad{background:var(--red);color:#fff}
+ #hint{position:fixed;left:50%;transform:translateX(-50%);bottom:132px;color:#8d7c69;font-size:10px;pointer-events:none}
+</style>
+</head><body>
+<canvas id="c"></canvas>
+
+<div class="ui" id="top">
+  <div class="brand">君記早餐<small>KWAAN KEE · 3D</small></div>
+  <div class="stats">營業額 <b id="money">$0</b><br>好評 <b id="good">0</b>　負評 <b id="bad">0</b></div>
+</div>
+
+<div class="ui" id="orderCard">
+  <div id="who">客人</div>
+  <div id="chips"></div>
+  <div id="barWrap"><div id="bar"></div></div>
+</div>
+
+<div class="ui" id="trayBar">
+  <div id="tray"><span class="e">托盤空</span></div>
+  <div class="btns">
+    <button class="b" onclick="openSheet('drink')">水吧</button>
+    <button class="b" onclick="openSheet('food')">爐頭</button>
+    <button class="b g" onclick="serve()">出餐</button>
+    <button class="b" onclick="clearTray()" style="flex:0 0 70px">清空</button>
+  </div>
+</div>
+
+<div id="sheet"></div>
+<div id="toast"></div>
+<div id="hint">撳 3D 場景入面嘅水吧／爐頭 都可以落單</div>
+
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.161.0/build/three.module.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+/* ---------- 場景 ---------- */
+const renderer = new THREE.WebGLRenderer({canvas:document.getElementById('c'), antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.5;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x120c08);
+scene.fog = new THREE.Fog(0x120c08, 14, 26);
+
+const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
+camera.position.set(0.1, 3.0, 11.6);
+camera.lookAt(0, 1.3, -0.9);
+
+/* 燈光：左窗自然光 + 店內暖燈 */
+const sun = new THREE.DirectionalLight(0xffe7c4, 3.6);
+sun.position.set(-6, 6, 4);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024,1024);
+scene.add(sun);
+const fill = new THREE.HemisphereLight(0xffd9a8, 0x4a3422, 2.2);
+scene.add(fill);
+scene.add(new THREE.AmbientLight(0xffd9b0, 0.9));
+const lamp = new THREE.PointLight(0xffb46b, 60, 18, 2);
+lamp.position.set(0.6, 3.0, 1.6);
+scene.add(lamp);
+
+/* ---------- 材質 ---------- */
+const M = {
+  wood:  new THREE.MeshStandardMaterial({color:0x6b4a2f, roughness:.85}),
+  wood2: new THREE.MeshStandardMaterial({color:0x8a6240, roughness:.8}),
+  cream: new THREE.MeshStandardMaterial({color:0xf0e6d4, roughness:.7}),
+  steel: new THREE.MeshStandardMaterial({color:0xb8bcc0, roughness:.25, metalness:.85}),
+  tile:  new THREE.MeshStandardMaterial({color:0x2b3a34, roughness:.95}),
+  red:   new THREE.MeshStandardMaterial({color:0xa8342a, roughness:.7}),
+  green: new THREE.MeshStandardMaterial({color:0x3f7d4e, roughness:.7}),
+  amber: new THREE.MeshStandardMaterial({color:0xe0a33c, roughness:.6}),
+  wall:  new THREE.MeshStandardMaterial({color:0x3b2a1c, roughness:1}),
+  glass: new THREE.MeshStandardMaterial({color:0xcfe6e0, roughness:.1, metalness:.1, transparent:true, opacity:.35})
+};
+
+/* ---------- 地板／牆 ---------- */
+const floor = new THREE.Mesh(new THREE.BoxGeometry(14,.2,10), M.tile);
+floor.position.y = -.1; floor.receiveShadow = true; scene.add(floor);
+
+const wall = new THREE.Mesh(new THREE.BoxGeometry(14,4.2,.3), M.wall);
+wall.position.set(0,2.1,-3); wall.receiveShadow = true; scene.add(wall);
+
+/* 窗（左邊，光嚟自呢邊） */
+const win = new THREE.Mesh(new THREE.BoxGeometry(.15,2.4,4), M.glass);
+win.position.set(-6.6,1.9,-.4); scene.add(win);
+const winFrame = new THREE.Mesh(new THREE.BoxGeometry(.1,2.7,4.3), M.amber);
+winFrame.position.set(-6.7,1.9,-.4); winFrame.scale.set(1,1.02,1.02); scene.add(winFrame);
+
+/* ---------- 櫃檯 ---------- */
+const counter = new THREE.Mesh(new THREE.BoxGeometry(7.2,.9,1.5), M.wood);
+counter.position.set(0,.85,.6); counter.castShadow = counter.receiveShadow = true; scene.add(counter);
+const counterTop = new THREE.Mesh(new THREE.BoxGeometry(7.4,.12,1.65), M.cream);
+counterTop.position.set(0,1.36,.6); counterTop.castShadow = true; scene.add(counterTop);
+
+/* 檯面小物 */
+function cup(x,z,c){
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(.11,.09,.22,16), M.cream);
+  body.position.y=.11; body.castShadow=true; g.add(body);
+  const tea = new THREE.Mesh(new THREE.CylinderGeometry(.095,.095,.02,16), new THREE.MeshStandardMaterial({color:c,roughness:.3}));
+  tea.position.y=.2; g.add(tea);
+  g.position.set(x,1.42,z); return g;
+}
+scene.add(cup(-1.2,.5,0xb9713a), cup(-.6,.55,0xb9713a));
+
+/* ---------- 水吧 ---------- */
+const barGroup = new THREE.Group();
+const barBody = new THREE.Mesh(new THREE.BoxGeometry(2.2,1.1,1.2), M.steel);
+barBody.position.y=.55; barBody.castShadow=barBody.receiveShadow=true; barGroup.add(barBody);
+const barTop = new THREE.Mesh(new THREE.BoxGeometry(2.3,.08,1.3), M.cream);
+barTop.position.y=1.14; barGroup.add(barTop);
+for(let i=0;i<3;i++){
+  const b = new THREE.Mesh(new THREE.CylinderGeometry(.09,.09,.3,12), M.amber);
+  b.position.set(-.6+i*.55,1.33,0); b.castShadow=true; barGroup.add(b);
+}
+barGroup.position.set(-2.45,0,-1.05); barGroup.scale.setScalar(1.12); scene.add(barGroup);
+const barBack = new THREE.Mesh(new THREE.BoxGeometry(2.4,2.0,.1), new THREE.MeshStandardMaterial({color:0x1f3b3a, roughness:.9}));
+barBack.position.set(-2.45,1.0,-1.75); scene.add(barBack);
+
+/* ---------- 爐頭 ---------- */
+const stoveGroup = new THREE.Group();
+const stove = new THREE.Mesh(new THREE.BoxGeometry(2.2,1.0,1.2), M.steel);
+stove.position.y=.5; stove.castShadow=stove.receiveShadow=true; stoveGroup.add(stove);
+const hot1 = new THREE.Mesh(new THREE.CylinderGeometry(.34,.34,.05,20), new THREE.MeshStandardMaterial({color:0x1a1a1a,roughness:.9}));
+hot1.position.set(-.5,1.03,0); stoveGroup.add(hot1);
+const hot2 = hot1.clone(); hot2.position.x=.5; stoveGroup.add(hot2);
+const pan = new THREE.Mesh(new THREE.CylinderGeometry(.3,.3,.09,20), M.red);
+pan.position.set(-.5,1.1,0); stoveGroup.add(pan);
+stoveGroup.position.set(.7,0,-1.15); stoveGroup.scale.setScalar(1.12); scene.add(stoveGroup);
+const stoveBack = new THREE.Mesh(new THREE.BoxGeometry(2.4,2.0,.1), new THREE.MeshStandardMaterial({color:0x3a1f16, roughness:.9}));
+stoveBack.position.set(.7,1.0,-1.8); scene.add(stoveBack);
+
+/* ---------- 出餐位 ---------- */
+const pass = new THREE.Mesh(new THREE.BoxGeometry(1.5,.9,.9), M.wood2);
+pass.position.set(3.5,.45,-1.2); pass.castShadow=pass.receiveShadow=true; scene.add(pass);
+const bell = new THREE.Mesh(new THREE.SphereGeometry(.12,16,12), M.amber);
+bell.position.set(3.5,1.0,-1.2); bell.castShadow=true; scene.add(bell);
+
+/* ---------- 客人（低多邊形） ---------- */
+const cust = new THREE.Group();
+const bodyM = new THREE.MeshStandardMaterial({color:0x2f4a63, roughness:.85});
+const body = new THREE.Mesh(new THREE.CapsuleGeometry(.32,.62,6,12), bodyM);
+body.position.y=.95; body.castShadow=true; cust.add(body);
+const head = new THREE.Mesh(new THREE.SphereGeometry(.28,20,16), new THREE.MeshStandardMaterial({color:0xe8c39e, roughness:.8}));
+head.position.y=1.62; head.castShadow=true; cust.add(head);
+const hair = new THREE.Mesh(new THREE.SphereGeometry(.29,20,16,0,Math.PI*2,0,Math.PI/2), new THREE.MeshStandardMaterial({color:0x241a12,roughness:.9}));
+hair.position.y=1.66; cust.add(hair);
+cust.position.set(1.55,0,2.1); cust.rotation.y = -0.35; scene.add(cust);
+
+/* 吊燈 */
+for (const x of [-2.6,0,2.6]){
+  const cord = new THREE.Mesh(new THREE.CylinderGeometry(.015,.015,.9,6), M.wall);
+  cord.position.set(x,2.75,.6); scene.add(cord);
+  const shade = new THREE.Mesh(new THREE.ConeGeometry(.28,.26,18,1,true), M.amber);
+  shade.position.set(x,2.28,.6); shade.rotation.x = Math.PI; scene.add(shade);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(.09,12,10), new THREE.MeshBasicMaterial({color:0xffd9a0}));
+  bulb.position.set(x,2.18,.6); scene.add(bulb);
+}
+
+/* 招牌 */
+function sign(text, w, x, y, z){
+  const cv = document.createElement('canvas'); cv.width=512; cv.height=160;
+  const g = cv.getContext('2d');
+  g.fillStyle='#1b1209'; g.fillRect(0,0,512,160);
+  g.fillStyle='#e0a33c'; g.font='bold 92px "Noto Sans TC",sans-serif'; g.textAlign='center'; g.textBaseline='middle';
+  g.fillText(text,256,86);
+  const tex = new THREE.CanvasTexture(cv);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w,w*160/512), new THREE.MeshBasicMaterial({map:tex,transparent:true}));
+  m.position.set(x,y,z); scene.add(m); return m;
+}
+sign('水吧', 1.5, -2.45, 1.95, -1.15);
+sign('爐頭', 1.5, .7, 1.95, -1.25);
+sign('出餐', 1.2, 3.5, 1.75, -1.35);
+sign('君記早餐', 3.2, 0, 3.1, -2.8);
+
+/* ---------- 相機自適應 ---------- */
+function resize(){
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w,h,false);
+  camera.aspect = w/h;
+  camera.fov = h > w ? 52 : 42;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+
+/* ---------- 點擊偵測 ---------- */
+const ray = new THREE.Raycaster(), pt = new THREE.Vector2();
+function pick(ev){
+  const x = (ev.clientX/innerWidth)*2-1, y = -(ev.clientY/innerHeight)*2+1;
+  pt.set(x,y); ray.setFromCamera(pt, camera);
+  const hits = ray.intersectObjects([barBody, barTop, stove, hot1, hot2], true);
+  if(!hits.length) return;
+  let o = hits[0].object, root = o;
+  while(root.parent && root.parent !== scene) root = root.parent;
+  if(root === barGroup) openSheet('drink');
+  else if(root === stoveGroup) openSheet('food');
+}
+renderer.domElement.addEventListener('pointerdown', pick);
+
+/* ---------- 遊戲邏輯 ---------- */
+const DRINKS=["奶茶","咖啡","檸茶","檸水","好立克","阿華田"];
+const FOODS=["煎蛋多士","餐蛋麵","菠蘿油","火腿通粉","西多士","蛋治"];
+const D_OPTS=["凍","少甜","走甜","走奶","飛冰"];
+const F_OPTS=["轉多士","加蛋","加辣","走青"];
+const PRICE={"奶茶":18,"咖啡":18,"檸茶":20,"檸水":18,"好立克":18,"阿華田":18,
+             "煎蛋多士":16,"餐蛋麵":28,"菠蘿油":14,"火腿通粉":22,"西多士":28,"蛋治":22};
+const CUSTOMERS=[
+ {who:"趕返工 · 阿俊", items:[{n:"奶茶",o:["凍","少甜"]},{n:"蛋治",o:[]}], pat:16},
+ {who:"學生 · 阿妹", items:[{n:"檸茶",o:["凍","飛冰"]},{n:"西多士",o:["加辣"]}], pat:22},
+ {who:"熟客 · 陳伯", items:[{n:"奶茶",o:["走甜","走奶"]}], pat:24},
+ {who:"外賣 · 輝仔", items:[{n:"餐蛋麵",o:[]},{n:"檸水",o:["少甜"]}], pat:14},
+ {who:"街坊 · 強哥", items:[{n:"火腿通粉",o:["轉多士"]},{n:"咖啡",o:["凍"]}], pat:20},
+];
+let tray=[], money=0, good=0, bad=0, idx=-1, timer=null, left=0, total=1;
+
+function stats(){
+  document.getElementById("money").textContent="$"+money;
+  document.getElementById("good").textContent=good;
+  document.getElementById("bad").textContent=bad;
+}
+function drawTray(){
+  const t=document.getElementById("tray");
+  t.innerHTML = tray.length ? tray.map(i=>`<span class="t">${i.n}${i.o.length?" · "+i.o.join("·"):""}</span>`).join("")
+                            : '<span class="e">托盤空</span>';
+}
+function render(){
+  const c=CUSTOMERS[idx];
+  document.getElementById("who").textContent=c.who;
+  document.getElementById("chips").innerHTML=c.items.map(i=>
+    `<span class="chip">${i.n}${i.o.map(o=>`<span class="mod">·${o}</span>`).join("")}</span>`).join("");
+  cust.scale.setScalar(1);
+  stats();
+}
+function openSheet(kind){
+  const list=kind==="drink"?DRINKS:FOODS, opts=kind==="drink"?D_OPTS:F_OPTS;
+  const s=document.getElementById("sheet");
+  s.dataset.kind=kind; s.dataset.item=""; window._mods=[];
+  s.innerHTML=`<h4>${kind==="drink"?"水吧":"爐頭"}</h4>
+   <div class="opts" id="items">${list.map(n=>`<button class="opt" onclick="pick('${n}')">${n}</button>`).join("")}</div>
+   <div class="opts" id="mods">${opts.map(o=>`<button class="opt" onclick="mod('${o}')">${o}</button>`).join("")}</div>
+   <div class="btns"><button class="b g" onclick="add()">加入托盤</button><button class="b" onclick="closeSheet()">取消</button></div>`;
+  s.classList.add("on");
+}
+window.pick = n => { document.querySelectorAll("#items .opt").forEach(b=>b.classList.toggle("on",b.textContent===n)); document.getElementById("sheet").dataset.item=n; };
+window.mod = o => { const b=[...document.querySelectorAll("#mods .opt")].find(x=>x.textContent===o); b.classList.toggle("on");
+  window._mods=[...document.querySelectorAll("#mods .opt.on")].map(x=>x.textContent); };
+window.add = () => { const s=document.getElementById("sheet"), n=s.dataset.item;
+  if(!n){ toast("未揀嘢","bad"); return; } tray.push({n,o:[...window._mods].sort()}); drawTray(); closeSheet(); };
+window.clearTray = () => { tray=[]; drawTray(); };
+window.closeSheet = () => document.getElementById("sheet").classList.remove("on");
+function toast(m,cls){ const t=document.getElementById("toast"); t.textContent=m; t.className="on "+cls; setTimeout(()=>t.className=cls,900); }
+function eq(a,b){ return JSON.stringify(a)===JSON.stringify(b); }
+
+window.serve = () => {
+  const c=CUSTOMERS[idx];
+  const want=c.items.map(i=>({n:i.n,o:[...i.o].sort()}));
+  const ok = tray.length===want.length && want.every(w=>tray.some(t=>eq(t,w)));
+  if(ok){ money += want.reduce((s,i)=>s+PRICE[i.n],0); good++; toast("✓ 正確","ok");
+          cust.scale.setScalar(1.08); setTimeout(()=>cust.scale.setScalar(1),200);
+  } else { bad++; toast("✗ 做錯單","bad"); }
+  tray=[]; drawTray(); next();
+};
+
+function next(){
+  clearInterval(timer); idx++;
+  if(idx>=CUSTOMERS.length) return endGame();
+  render(); left=total=CUSTOMERS[idx].pat;
+  timer=setInterval(()=>{
+    left-=0.2;
+    document.getElementById("bar").style.width=Math.max(0,left/total*100)+"%";
+    if(left<=0){ clearInterval(timer); bad++; stats(); toast("客人走咗","bad"); tray=[]; drawTray(); next(); }
+  },200);
+}
+function endGame(){
+  clearInterval(timer);
+  document.getElementById("chips").innerHTML="<b>收舖</b>";
+  document.getElementById("who").textContent=`營業額 $${money}　好評 ${good}　負評 ${bad}`;
+  document.getElementById("bar").style.width="0%";
+}
+
+/* ---------- 動畫 ---------- */
+let t0=performance.now();
+function loop(now){
+  const t=(now-t0)/1000;
+  lamp.intensity = 12 + Math.sin(t*3.1)*1.2;
+  cust.position.y = Math.sin(t*1.4)*0.015;
+  camera.position.x = 0.1 + Math.sin(t*0.18)*0.25;
+  camera.lookAt(0,1.3,-0.9);
+  renderer.render(scene,camera);
+  requestAnimationFrame(loop);
+}
+idx=-1; next(); drawTray(); stats();
+requestAnimationFrame(loop);
+
+/* 自動示範 ?auto=1 */
+if(location.search.includes("auto")){
+  const S=[
+    ()=>{openSheet("drink");pick("奶茶");mod("凍");mod("少甜");add();},
+    ()=>{openSheet("food");pick("蛋治");add();},
+    ()=>serve(),
+    ()=>{openSheet("drink");pick("檸茶");mod("凍");mod("飛冰");add();},
+    ()=>{openSheet("food");pick("西多士");mod("加辣");add();},
+    ()=>serve(),
+  ];
+  setTimeout(()=>{let i=0;const t=setInterval(()=>{ if(i>=S.length) return clearInterval(t); S[i++](); },1100);},900);
+}
+</script>
+</body></html>
