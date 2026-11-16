@@ -320,6 +320,28 @@ function endGame(){
   document.getElementById("bar").style.width="0%";
 }
 
+/* ---------- 蒸汽 + 站頭提示圈 ---------- */
+const steamTex = (()=>{
+  const c=document.createElement('canvas'); c.width=c.height=64;
+  const g=c.getContext('2d');
+  const grd=g.createRadialGradient(32,32,2,32,32,30);
+  grd.addColorStop(0,'rgba(255,255,255,.9)'); grd.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle=grd; g.beginPath(); g.arc(32,32,30,0,7); g.fill();
+  return new THREE.CanvasTexture(c);
+})();
+const steam=[];
+for(let i=0;i<14;i++){
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:steamTex,transparent:true,opacity:.25,depthWrite:false}));
+  sp.position.set(-2.45+(Math.random()*1.4-0.4), 1.4+Math.random()*0.8, -1.15);
+  sp.scale.setScalar(0.25+Math.random()*0.2);
+  sp.userData={x:sp.position.x, v:0.25+Math.random()*0.25};
+  scene.add(sp); steam.push(sp);
+}
+const ringMat=new THREE.MeshBasicMaterial({color:0xe0a33c,transparent:true,opacity:.5,side:THREE.DoubleSide});
+const ringGeo=new THREE.RingGeometry(.62,.72,32);
+const ring1=new THREE.Mesh(ringGeo,ringMat); ring1.rotation.x=-Math.PI/2; ring1.position.set(-2.45,1.32,-.55); scene.add(ring1);
+const ring2=new THREE.Mesh(ringGeo,ringMat.clone()); ring2.rotation.x=-Math.PI/2; ring2.position.set(.7,1.27,-.6); scene.add(ring2);
+
 /* ---------- 動畫 ---------- */
 let t0=performance.now();
 function loop(now){
