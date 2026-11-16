@@ -284,6 +284,7 @@ function openSheet(kind){
    <div class="btns"><button class="b g" onclick="add()">加入托盤</button><button class="b" onclick="closeSheet()">取消</button></div>`;
   s.classList.add("on");
 }
+window.openSheet = openSheet;
 window.pick = n => { document.querySelectorAll("#items .opt").forEach(b=>b.classList.toggle("on",b.textContent===n)); document.getElementById("sheet").dataset.item=n; };
 window.mod = o => { const b=[...document.querySelectorAll("#mods .opt")].find(x=>x.textContent===o); b.classList.toggle("on");
   window._mods=[...document.querySelectorAll("#mods .opt.on")].map(x=>x.textContent); };
@@ -348,4 +349,5 @@ if(location.search.includes("auto")){
   setTimeout(()=>{let i=0;const t=setInterval(()=>{ if(i>=S.length) return clearInterval(t); S[i++](); },1100);},900);
 }
 </script>
+<script>window.onerror=function(m,s,l){document.title='ERR:'+m+'@'+l;};</script>
 </body></html>
