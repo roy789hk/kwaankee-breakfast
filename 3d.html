@@ -325,7 +325,17 @@ let t0=performance.now();
 function loop(now){
   const t=(now-t0)/1000;
   lamp.intensity = 12 + Math.sin(t*3.1)*1.2;
-  cust.position.y = Math.sin(t*1.4)*0.015;
+  cust.position.y = Math.sin(t*1.4)*0.02;
+  for(const sp of steam){
+    sp.position.y += 0.004 + sp.userData.v*0.004;
+    sp.material.opacity = Math.max(0, 0.28 - (sp.position.y-1.4)*0.12);
+    sp.position.x = sp.userData.x + Math.sin(t*0.9+sp.position.y)*0.03;
+    if(sp.position.y>2.6){ sp.position.y=1.38; sp.material.opacity=0.28; }
+  }
+  const pulse = 0.35 + 0.25*Math.sin(t*2.2);
+  ring1.material.opacity = pulse; ring2.material.opacity = pulse;
+  ring1.scale.setScalar(1+0.04*Math.sin(t*2.2));
+  ring2.scale.setScalar(1+0.04*Math.sin(t*2.2+0.6));
   camera.position.x = 0.1 + Math.sin(t*0.18)*0.25;
   camera.lookAt(0,1.3,-0.9);
   renderer.render(scene,camera);
