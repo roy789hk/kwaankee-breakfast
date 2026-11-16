@@ -82,60 +82,113 @@ renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.5;
+renderer.toneMappingExposure = 1.12;
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x120c08);
-scene.fog = new THREE.Fog(0x120c08, 14, 26);
+scene.background = new THREE.Color(0x18222e);
+scene.fog = new THREE.Fog(0x18222e, 15, 30);
 
 const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
 camera.position.set(0.1, 3.0, 11.6);
 camera.lookAt(0, 1.3, -0.9);
 
 /* 燈光：左窗自然光 + 店內暖燈 */
-const sun = new THREE.DirectionalLight(0xffe7c4, 3.6);
+const sun = new THREE.DirectionalLight(0xfff2de, 3.2);
 sun.position.set(-6, 6, 4);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024,1024);
 scene.add(sun);
-const fill = new THREE.HemisphereLight(0xffd9a8, 0x4a3422, 2.2);
+const fill = new THREE.HemisphereLight(0xdfe9f2, 0x3a2a20, 2.0);
 scene.add(fill);
-scene.add(new THREE.AmbientLight(0xffd9b0, 0.9));
-const lamp = new THREE.PointLight(0xffb46b, 60, 18, 2);
+scene.add(new THREE.AmbientLight(0xfff0dc, 0.85));
+const lamp = new THREE.PointLight(0xffcf9a, 55, 18, 2);
 lamp.position.set(0.6, 3.0, 1.6);
 scene.add(lamp);
 
 /* ---------- 材質 ---------- */
 const M = {
-  wood:  new THREE.MeshStandardMaterial({color:0x6b4a2f, roughness:.85}),
-  wood2: new THREE.MeshStandardMaterial({color:0x8a6240, roughness:.8}),
-  cream: new THREE.MeshStandardMaterial({color:0xf0e6d4, roughness:.7}),
+  wood:  new THREE.MeshStandardMaterial({color:0x5a3f30, roughness:.85}),
+  wood2: new THREE.MeshStandardMaterial({color:0x7a5340, roughness:.8}),
+  cream: new THREE.MeshStandardMaterial({color:0xf5efe0, roughness:.7}),
   steel: new THREE.MeshStandardMaterial({color:0xb8bcc0, roughness:.25, metalness:.85}),
-  tile:  new THREE.MeshStandardMaterial({color:0x2b3a34, roughness:.95}),
-  red:   new THREE.MeshStandardMaterial({color:0xa8342a, roughness:.7}),
-  green: new THREE.MeshStandardMaterial({color:0x3f7d4e, roughness:.7}),
-  amber: new THREE.MeshStandardMaterial({color:0xe0a33c, roughness:.6}),
-  wall:  new THREE.MeshStandardMaterial({color:0x3b2a1c, roughness:1}),
+  tile:  new THREE.MeshStandardMaterial({color:0x2f4a62, roughness:.95}),
+  red:   new THREE.MeshStandardMaterial({color:0xc0392b, roughness:.7}),
+  green: new THREE.MeshStandardMaterial({color:0x6b8e5a, roughness:.7}),
+  amber: new THREE.MeshStandardMaterial({color:0xd9a441, roughness:.6}),
+  wall:  new THREE.MeshStandardMaterial({color:0x2b3a4a, roughness:1}),
   glass: new THREE.MeshStandardMaterial({color:0xcfe6e0, roughness:.1, metalness:.1, transparent:true, opacity:.35})
 };
 
+/* ---------- 和風圖案（canvas 紋理） ---------- */
+function texCanvas(size, draw, rx=1, ry=1){
+  const c=document.createElement('canvas'); c.width=c.height=size;
+  draw(c.getContext('2d'), size);
+  const t=new THREE.CanvasTexture(c);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(rx,ry);
+  t.anisotropy=4;
+  return t;
+}
+// 榻榻米
+const tatamiTex = texCanvas(256,(g,S)=>{
+  g.fillStyle='#b5a678'; g.fillRect(0,0,S,S);
+  g.strokeStyle='rgba(120,105,65,.75)'; g.lineWidth=1.6;
+  for(let y=0;y<S;y+=7){ g.beginPath(); g.moveTo(0,y); g.lineTo(S,y); g.stroke(); }
+  g.strokeStyle='rgba(70,55,30,.85)'; g.lineWidth=7;
+  g.strokeRect(0,0,S,S);
+}, 5, 4);
+// 障子（白紙＋木格）
+const shojiTex = texCanvas(256,(g,S)=>{
+  g.fillStyle='#f3eee2'; g.fillRect(0,0,S,S);
+  g.strokeStyle='#8a6a4e'; g.lineWidth=6;
+  g.strokeRect(0,0,S,S);
+  g.beginPath(); g.moveTo(S/2,0); g.lineTo(S/2,S); g.moveTo(0,S/2); g.lineTo(S,S/2); g.stroke();
+  g.lineWidth=2; g.strokeStyle='rgba(138,106,78,.5)';
+  for(let i=1;i<4;i++){ g.beginPath(); g.moveTo(0,S*i/4); g.lineTo(S,S*i/4); g.moveTo(S*i/4,0); g.lineTo(S*i/4,S); g.stroke(); }
+}, 3, 2);
+// 市松（格仔）
+const ichiTex = texCanvas(128,(g,S)=>{
+  g.fillStyle='#243a52'; g.fillRect(0,0,S,S);
+  g.fillStyle='#f5efe0';
+  for(let y=0;y<2;y++) for(let x=0;x<2;x++) if((x+y)%2===0) g.fillRect(x*S/2,y*S/2,S/2,S/2);
+}, 6, 1);
+// 青海波（弧形魚鱗）
+const seigaiTex = texCanvas(256,(g,S)=>{
+  g.fillStyle='#1f3348'; g.fillRect(0,0,S,S);
+  g.strokeStyle='rgba(200,220,235,.55)'; g.lineWidth=3;
+  const R=S/4;
+  for(let row=0; row<4; row++){
+    for(let col=0; col<3; col++){
+      const cx=col*R*2 + (row%2?R:0), cy=row*R;
+      for(let k=1;k<=3;k++){ g.beginPath(); g.arc(cx,cy,R*k/1.4,Math.PI,Math.PI*2); g.stroke(); }
+    }
+  }
+}, 3, 1);
+
 /* ---------- 地板／牆 ---------- */
-const floor = new THREE.Mesh(new THREE.BoxGeometry(14,.2,10), M.tile);
+const floor = new THREE.Mesh(new THREE.BoxGeometry(14,.2,10), new THREE.MeshStandardMaterial({map:tatamiTex, roughness:.95}));
 floor.position.y = -.1; floor.receiveShadow = true; scene.add(floor);
 
-const wall = new THREE.Mesh(new THREE.BoxGeometry(14,4.2,.3), M.wall);
+const wall = new THREE.Mesh(new THREE.BoxGeometry(14,4.2,.3), new THREE.MeshStandardMaterial({map:shojiTex, roughness:.9}));
 wall.position.set(0,2.1,-3); wall.receiveShadow = true; scene.add(wall);
 
 /* 窗（左邊，光嚟自呢邊） */
 const win = new THREE.Mesh(new THREE.BoxGeometry(.15,2.4,4), M.glass);
 win.position.set(-6.6,1.9,-.4); scene.add(win);
 const winFrame = new THREE.Mesh(new THREE.BoxGeometry(.1,2.7,4.3), M.amber);
-winFrame.position.set(-6.7,1.9,-.4); winFrame.scale.set(1,1.02,1.02); scene.add(winFrame);
+winFrame.position.set(-6.7,1.9,-.4); winFrame.scale.set(1,1.02,1.02); winFrame.material = new THREE.MeshStandardMaterial({color:0x6b4c38, roughness:.9}); scene.add(winFrame);
 
 /* ---------- 櫃檯 ---------- */
 const counter = new THREE.Mesh(new THREE.BoxGeometry(7.2,.9,1.5), M.wood);
 counter.position.set(0,.85,.6); counter.castShadow = counter.receiveShadow = true; scene.add(counter);
+const counterFrontTex = new THREE.Mesh(new THREE.PlaneGeometry(7.2,.9), new THREE.MeshStandardMaterial({map:ichiTex, roughness:.85}));
+counterFrontTex.position.set(0,.85,1.36); scene.add(counterFrontTex);
 const counterTop = new THREE.Mesh(new THREE.BoxGeometry(7.4,.12,1.65), M.cream);
 counterTop.position.set(0,1.36,.6); counterTop.castShadow = true; scene.add(counterTop);
+
+/* 暖簾 */
+const noren = new THREE.Mesh(new THREE.PlaneGeometry(3.2,1.0), new THREE.MeshStandardMaterial({map:seigaiTex, roughness:.9, side:THREE.DoubleSide}));
+noren.position.set(0,2.55,-2.55); scene.add(noren);
+const crest = new THREE.Mesh(new THREE.CircleGeometry(.26,24), new THREE.MeshBasicMaterial({color:0xc0392b}));
+crest.position.set(0,2.6,-2.52); scene.add(crest);
 
 /* 檯面小物 */
 function cup(x,z,c){
@@ -190,16 +243,35 @@ const head = new THREE.Mesh(new THREE.SphereGeometry(.28,20,16), new THREE.MeshS
 head.position.y=1.62; head.castShadow=true; cust.add(head);
 const hair = new THREE.Mesh(new THREE.SphereGeometry(.29,20,16,0,Math.PI*2,0,Math.PI/2), new THREE.MeshStandardMaterial({color:0x241a12,roughness:.9}));
 hair.position.y=1.66; cust.add(hair);
+// 五官
+const eyeMat = new THREE.MeshBasicMaterial({color:0x2a2118});
+for (const ex of [-.1,.1]){
+  const e = new THREE.Mesh(new THREE.SphereGeometry(.035,10,8), eyeMat);
+  e.position.set(ex,1.64,.25); cust.add(e);
+}
+const blushMat = new THREE.MeshBasicMaterial({color:0xffb3b3});
+for (const bx of [-.17,.17]){
+  const b = new THREE.Mesh(new THREE.CircleGeometry(.05,12), blushMat);
+  b.position.set(bx,1.56,.245); cust.add(b);
+}
+const mouth = new THREE.Mesh(new THREE.TorusGeometry(.04,.012,8,12,Math.PI), new THREE.MeshBasicMaterial({color:0x8a4a3a}));
+mouth.position.set(0,1.55,.26); mouth.rotation.z=Math.PI; cust.add(mouth);
+
 cust.position.set(1.55,0,2.1); cust.rotation.y = -0.35; scene.add(cust);
 
 /* 吊燈 */
 for (const x of [-2.6,0,2.6]){
-  const cord = new THREE.Mesh(new THREE.CylinderGeometry(.015,.015,.9,6), M.wall);
-  cord.position.set(x,2.75,.6); scene.add(cord);
-  const shade = new THREE.Mesh(new THREE.ConeGeometry(.28,.26,18,1,true), M.amber);
-  shade.position.set(x,2.28,.6); shade.rotation.x = Math.PI; scene.add(shade);
-  const bulb = new THREE.Mesh(new THREE.SphereGeometry(.09,12,10), new THREE.MeshBasicMaterial({color:0xffd9a0}));
-  bulb.position.set(x,2.18,.6); scene.add(bulb);
+  const cord = new THREE.Mesh(new THREE.CylinderGeometry(.012,.012,.8,6), M.wall);
+  cord.position.set(x,2.85,.6); scene.add(cord);
+  const paper = new THREE.Mesh(new THREE.CylinderGeometry(.26,.26,.62,18,1,true),
+    new THREE.MeshStandardMaterial({color:0xf7e8c8, emissive:0xffb96b, emissiveIntensity:.55, roughness:.9, side:THREE.DoubleSide}));
+  paper.position.set(x,2.2,.6); scene.add(paper);
+  for (const yy of [-.2,0,.2]){
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(.265,.265,.05,18,1,true), new THREE.MeshStandardMaterial({color:0xc0392b, roughness:.8, side:THREE.DoubleSide}));
+    band.position.set(x,2.2+yy,.6); scene.add(band);
+  }
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(.1,.1,.06,12), M.wall);
+  cap.position.set(x,2.53,.6); scene.add(cap);
 }
 
 /* 招牌 */
@@ -368,6 +440,27 @@ function endGame(){
   document.getElementById("bar").style.width="0%";
 }
 
+/* ---------- 櫻花花瓣 ---------- */
+const petalTex = (()=>{
+  const c=document.createElement('canvas'); c.width=c.height=64;
+  const g=c.getContext('2d');
+  g.fillStyle='#ff86ac';
+  g.beginPath(); g.ellipse(32,32,14,22,0,0,Math.PI*2); g.fill();
+  g.globalCompositeOperation='destination-out';
+  g.beginPath(); g.arc(32,10,7,0,Math.PI*2); g.fill();
+  g.globalCompositeOperation='source-over';
+  return new THREE.CanvasTexture(c);
+})();
+const petals=[];
+for(let i=0;i<70;i++){
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:petalTex,transparent:true,opacity:.85,depthWrite:false}));
+  const sc=0.2+Math.random()*0.16;
+  sp.scale.set(sc,sc,1);
+  sp.position.set(-7+Math.random()*14, 1+Math.random()*3.4, -3+Math.random()*7);
+  sp.userData={vy:0.0022+Math.random()*0.0025, ph:Math.random()*6.28, sw:0.3+Math.random()*0.5};
+  scene.add(sp); petals.push(sp);
+}
+
 /* ---------- 蒸汽 + 站頭提示圈 ---------- */
 const steamTex = (()=>{
   const c=document.createElement('canvas'); c.width=c.height=64;
@@ -435,6 +528,12 @@ function loop(now){
     }
   }
 
+  for(const pt of petals){
+    pt.position.y -= pt.userData.vy;
+    pt.position.x += Math.sin(t*0.7+pt.userData.ph)*0.0035;
+    pt.material.rotation += 0.004;
+    if(pt.position.y < 0.2){ pt.position.y = 4.4; pt.position.x = -7+Math.random()*14; }
+  }
   const pulse = 0.35 + 0.25*Math.sin(t*2.2);
   ring1.material.opacity = pulse; ring2.material.opacity = pulse;
   ring1.scale.setScalar(1+0.04*Math.sin(t*2.2));
