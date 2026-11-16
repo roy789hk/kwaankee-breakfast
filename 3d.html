@@ -68,11 +68,9 @@
 <div id="toast"></div>
 <div id="hint">撳 3D 場景入面嘅水吧／爐頭 都可以落單</div>
 
-<script type="importmap">
-{"imports":{"three":"https://unpkg.com/three@0.161.0/build/three.module.js"}}
-</script>
+
 <script type="module">
-import * as THREE from 'three';
+import * as THREE from './three.module.js';
 
 /* ---------- 場景 ---------- */
 const renderer = new THREE.WebGLRenderer({canvas:document.getElementById('c'), antialias:true});
@@ -348,6 +346,14 @@ if(location.search.includes("auto")){
   ];
   setTimeout(()=>{let i=0;const t=setInterval(()=>{ if(i>=S.length) return clearInterval(t); S[i++](); },1100);},900);
 }
+</script>
+<script>
+window.addEventListener('error', e => {
+  const d=document.createElement('div');
+  d.style.cssText='position:fixed;left:10px;right:10px;bottom:150px;background:#c8402f;color:#fff;padding:10px;border-radius:8px;font-size:12px;z-index:99';
+  d.textContent='載入錯誤：'+(e.message||'unknown');
+  document.body.appendChild(d);
+});
 </script>
 <script>window.onerror=function(m,s,l){document.title='ERR:'+m+'@'+l;};</script>
 </body></html>
