@@ -70,13 +70,13 @@ const sprites = layers.map(g=>{
 let angle=0;
 function draw(){
   ctx.clearRect(0,0,W,H);
-  const cx=W/2, cy=H*0.80;
+  const cx=W/2, cy=H*0.86;
   const a=angle;
   const w=S*SCALE, h=S*SCALE;
   // 由底到頂：每層沿視線方向錯開
   for(let z=0; z<sprites.length; z++){
-    const ox = Math.sin(a) * STEP * z;
-    const oy = -Math.cos(a) * STEP * z * 0.78;
+    const ox = Math.sin(a) * STEP * z * 0.35;
+    const oy = -STEP * z * 0.9;
     ctx.save();
     ctx.translate(cx + ox, cy + oy);
     ctx.rotate(a);
