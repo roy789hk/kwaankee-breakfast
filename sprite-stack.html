@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="UTF-8">
+<title>精靈堆疊 Sprite Stacking</title>
+<style>
+ body{margin:0;background:#0e141b;color:#e8eef5;font-family:"Noto Sans TC",sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:14px}
+ canvas{background:radial-gradient(circle at 50% 40%,#1b2733,#0b1117);border-radius:16px;box-shadow:0 20px 60px #000a}
+ .cap{font-size:13px;color:#8fa3b8;letter-spacing:1px}
+</style></head><body>
+<canvas id="c" width="520" height="520"></canvas>
+<div class="cap">精靈堆疊 · 一張 2D 畫布 · 無 3D 引擎</div>
+<script>
+const W=560,H=600, cv=document.getElementById('c'), ctx=cv.getContext('2d');
+const S=64;                 // 體素網格
+const SCALE=3.2;              // 每格放大
+const STEP=7.0;            // 每層錯開像素（×SCALE）
+
+/* ---------- 1. 建體素模型：一杯奶茶 ---------- */
+// 用高度圖 + 顏色規則砌，唔需要外部素材
+const layers=[];
+const R=13, CUP_H=22, SAUCER_H=2;
+function inCircle(x,y,r){ return (x*x+y*y) <= r*r; }
+
+// 底碟
+for(let z=0; z<SAUCER_H; z++){
+  const g=new Array(S*S).fill(null);
+  for(let y=-S/2;y<S/2;y++) for(let x=-S/2;x<S/2;x++){
+    if(inCircle(x,y,20)) g[(y+S/2)*S+(x+S/2)] = z===SAUCER_H-1 ? '#f2e8d5' : '#d8c9ae';
+  }
+  layers.push(g);
+}
+// 杯身（中空）
+for(let z=0; z<CUP_H; z++){
+  const g=new Array(S*S).fill(null);
+  for(let y=-S/2;y<S/2;y++) for(let x=-S/2;x<S/2;x++){
+    const d=Math.sqrt(x*x+y*y);
+    if(d<=R && d>=R-3.2){ const shade = x<0 ? '#fffaf0' : (x>6 ? '#d9c8ab' : '#f2e6cf'); g[(y+S/2)*S+(x+S/2)] = shade; }   // 杯壁（左光）
+    if(d<R-3.2 && z>=CUP_H-3) g[(y+S/2)*S+(x+S/2)] = '#b06a36'; // 奶茶面
+  }
+  // 杯耳
+  for(let y=-S/2;y<S/2;y++) for(let x=-S/2;x<S/2;x++){
+    const hx=x-R+1, hy=y;
+    const d=Math.sqrt(hx*hx+hy*hy);
+    if(d<=5 && d>=3 && x>R-3) g[(y+S/2)*S+(x+S/2)] = '#efe3cb';
+  }
+  layers.push(g);
+}
+// 杯蓋邊
+for(let z=CUP_H; z<CUP_H+1; z++){
+  const g=new Array(S*S).fill(null);
+  for(let y=-S/2;y<S/2;y++) for(let x=-S/2;x<S/2;x++){
+    const d=Math.sqrt(x*x+y*y);
+    if(d<=R+0.5 && d>=R-3.6) g[(y+S/2)*S+(x+S/2)] = '#e8d8b8';
+  }
+  layers.push(g);
+}
+
+/* ---------- 2. 每層預先畫成 sprite ---------- */
+const sprites = layers.map(g=>{
+  const off=document.createElement('canvas'); off.width=S; off.height=S;
+  const o=off.getContext('2d');
+  for(let y=0;y<S;y++) for(let x=0;x<S;x++){
+    const col=g[y*S+x]; if(!col) continue;
+    o.fillStyle=col; o.fillRect(x,y,1,1);
+  }
+  return off;
+});
+
+/* ---------- 3. 堆疊 + 旋轉 ---------- */
+let angle=0;
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const cx=W/2, cy=H*0.80;
+  const a=angle;
+  const w=S*SCALE, h=S*SCALE;
+  // 由底到頂：每層沿視線方向錯開
+  for(let z=0; z<sprites.length; z++){
+    const ox = Math.sin(a) * STEP * z;
+    const oy = -Math.cos(a) * STEP * z * 0.78;
+    ctx.save();
+    ctx.translate(cx + ox, cy + oy);
+    ctx.rotate(a);
+    ctx.drawImage(sprites[z], -w/2, -h/2, w, h);
+    ctx.restore();
+  }
+  ctx.save();
+  ctx.globalAlpha=.28; ctx.fillStyle='#000';
+  ctx.beginPath(); ctx.ellipse(cx, cy+30, 96, 26, 0, 0, 7); ctx.fill();
+  ctx.restore();
+}
+let last=0;
+function loop(t){
+  if(t-last>16){ angle += 0.012; draw(); last=t; }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body></html>
