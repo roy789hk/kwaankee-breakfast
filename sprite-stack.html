@@ -10,6 +10,7 @@
 <div class="cap">精靈堆疊 · 一張 2D 畫布 · 無 3D 引擎</div>
 <script>
 const W=560,H=600, cv=document.getElementById('c'), ctx=cv.getContext('2d');
+cv.width=W; cv.height=H;
 const S=64;                 // 體素網格
 const SCALE=3.2;              // 每格放大
 const STEP=7.0;            // 每層錯開像素（×SCALE）
