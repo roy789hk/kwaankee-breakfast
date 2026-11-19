@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-Hant"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>打小人 · 鵝頸橋</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+  html,body{height:100%;background:#0a0806;overflow:hidden;font-family:"Noto Sans TC",system-ui,sans-serif}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  canvas{display:block;touch-action:none}
+  #over{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:#0a0806e6;z-index:20;text-align:center;color:#f3e7cf}
+  #over .box{padding:24px 28px;border:2px solid #6b4a2a;border-radius:14px;background:#14100b;max-width:300px}
+  #over h1{font-size:24px;letter-spacing:2px;color:#ffcf6b;margin-bottom:6px}
+  #over p{font-size:13px;color:#c9b79a;line-height:2}
+  #over b{color:#ff8b5e;font-size:22px}
+  .btn{margin-top:14px;padding:12px 24px;border-radius:10px;background:#8c2f24;color:#ffe9c9;font-size:15px;font-weight:800;border:0}
+  #st{position:fixed;top:8px;left:0;right:0;text-align:center;font-size:12px;color:#8a7a63;z-index:5;pointer-events:none}
+</style></head><body>
+<div id="wrap"><canvas id="c" width="360" height="640"></canvas></div>
+<div id="st">按住小人不放連打 · 打中頭頂至高分</div>
+<div id="over"><div class="box">
+  <h1 id="ot">收工</h1>
+  <p><b id="osc">0</b> 分<br><span id="og"></span><br><span id="oins" style="font-size:12px"></span></p>
+  <button class="btn" onclick="startGame()">再打一次</button>
+</div></div>
+<script>
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+const W=360,H=640;
+
+/* ---------- 音效 ---------- */
+let AC=null;
+function audio(){ if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)(); return AC; }
+function noise(dur=0.12,vol=0.25){
+  try{
+    const a=audio(), n=a.sampleRate*dur, buf=a.createBuffer(1,n,a.sampleRate), d=buf.getChannelData(0);
+    for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/n,2.2);
+    const s=a.createBufferSource(); s.buffer=buf;
+    const f=a.createBiquadFilter(); f.type='lowpass'; f.frequency.value=1400;
+    const g=a.createGain(); g.gain.value=vol;
+    s.connect(f); f.connect(g); g.connect(a.destination); s.start();
+  }catch(e){}
+}
+function tone(f0,f1,dur,type='sine',vol=0.12){
+  try{
+    const a=audio(), o=a.createOscillator(), g=a.createGain();
+    o.type=type; o.frequency.setValueAtTime(f0,a.currentTime);
+    o.frequency.exponentialRampToValueAtTime(f1,a.currentTime+dur);
+    g.gain.setValueAtTime(vol,a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+dur);
+    o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime+dur);
+  }catch(e){}
+}
+const CHANT=['打你個小人頭！','打你隻小人手！','打你隻小人腳！','打你個小人身！','打到你有氣冇掟唞！','打到你冇得翻身！'];
+let sayIdx=0;
+function chant(){
+  if(!('speechSynthesis' in window)) return;
+  try{
+    const u=new SpeechSynthesisUtterance(CHANT[sayIdx++%CHANT.length]);
+    u.lang='zh-HK'; u.rate=1.15; u.pitch=1.15; u.volume=0.9;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+
+/* ---------- 遊戲狀態 ---------- */
+const G={
+  running:false, over:false, t:0, timeLeft:60,
+  score:0, combo:0, best:+(localStorage.getItem('dxr_best')||0),
+  hits:0, misses:0, good:0,
+  parts:[], floats:[], smoke:[],
+  slipper:{x:W/2,y:H*0.55,angle:0,swing:0},
+  shake:0, hitFlash:0,
+  effigy:{hp:3, shake:0, rot:0, x:W/2, y:H*0.52},
+  guest:null, guestT:3,
+  hand:80
+};
+
+/* 小人身體分區（相對小人中心） */
+const ZONES=[
+  {id:'head', dy:-62, r:26, mult:3, name:'頭'},
+  {id:'body', dy:-16, r:24, mult:2, name:'身'},
+  {id:'larm', dx:-30, dy:-24, r:14, mult:2, name:'左手'},
+  {id:'rarm', dx:30, dy:-24, r:14, mult:2, name:'右手'},
+  {id:'lleg', dx:-14, dy:26, r:14, mult:1.5, name:'左腳'},
+  {id:'rleg', dx:14, dy:26, r:14, mult:1.5, name:'右腳'}
+];
+
+function startGame(){
+  Object.assign(G,{running:true,over:false,t:0,timeLeft:60,score:0,combo:0,hits:0,misses:0,good:0,
+    parts:[],floats:[],smoke:[],shake:0,hitFlash:0,guest:null,guestT:3});
+  G.effigy={hp:3,shake:0,rot:0,x:W/2,y:H*0.52};
+  document.getElementById('over').style.display='none';
+  try{ (AC||audio()).resume(); }catch(e){}
+}
+
+/* ---------- 輸入 ---------- */
+let down=false, lastHit=0;
+function pos(e){
+  const r=cv.getBoundingClientRect();
+  const p=e.touches?e.touches[0]:e;
+  return {x:(p.clientX-r.left)*(W/r.width), y:(p.clientY-r.top)*(H/r.height)};
+}
+cv.addEventListener('pointerdown',e=>{ e.preventDefault(); down=true; swing(pos(e)); });
+cv.addEventListener('pointerup',()=>down=false);
+cv.addEventListener('pointerleave',()=>down=false);
+
+function swing(p){
+  if(!G.running) return;
+  G.slipper.x=p.x; G.slipper.y=p.y; G.slipper.swing=1;
+  const now=performance.now();
+  if(now-lastHit<90) return;
+  lastHit=now;
+  // 命中判定
+  const ex=G.effigy.x, ey=G.effigy.y;
+  let hit=null;
+  for(const z of ZONES){
+    const zx=ex+(z.dx||0), zy=ey+(z.dy||0);
+    if(Math.hypot(p.x-zx,p.y-zy)<z.r+10){ hit=z; break; }
+  }
+  // 貴人（唔好打）
+  if(G.guest && Math.hypot(p.x-G.guest.x,p.y-G.guest.y)<34){
+    G.score=Math.max(0,G.score-300); G.combo=0;
+    G.floats.push({x:p.x,y:p.y,txt:'唔好打貴人！',col:'#ff5c5c',life:1.2,vy:-40});
+    G.shake=0.5; noise(0.2,0.3);
+    G.guest=null; G.guestT=4+Math.random()*4;
+    return;
+  }
+  if(!hit){
+    G.combo=0; G.misses++; G.hand=Math.max(0,G.hand-3);
+    G.floats.push({x:p.x,y:p.y-16,txt:'扑空',col:'#8a7a63',life:.6,vy:-30});
+    noise(0.05,0.1); G.shake=0.15;
+    return;
+  }
+  // 打中
+  G.hits++; G.combo++;
+  G.hand=Math.min(100,G.hand+1);
+  const base=100*hit.mult;
+  const gain=Math.round(base*(1+Math.min(G.combo,20)*0.1));
+  G.score+=gain;
+  G.effigy.hp--; G.effigy.shake=1; G.shake=0.35+hit.mult*0.06;
+  G.slipper.angle=(Math.random()-0.5)*0.5;
+  noise(0.1,0.32); tone(180,60,0.12,'square',0.08);
+  // 紙碎
+  for(let i=0;i<10;i++){
+    G.parts.push({x:G.effigy.x+(hit.dx||0), y:G.effigy.y+(hit.dy||0),
+      vx:(Math.random()-0.5)*260, vy:-Math.random()*220-40, life:1, col:Math.random()<0.8?'#f3e7cf':'#d9b56b'});
+  }
+  G.floats.push({x:p.x,y:p.y-20,txt:'+'+gain+(G.combo>2?'  ×'+G.combo:''),col:'#ffcf6b',life:.9,vy:-60});
+  if(G.combo===3) tone(660,880,0.1,'triangle',0.07);
+  // 打爆一隻 → 換新
+  if(G.effigy.hp<=0) respawn();
+  // 每 5 下叫一句
+  if(G.hits%5===0) chant();
+}
+function respawn(){
+  G.effigy.hp=3+Math.floor(G.hits/8);
+  G.effigy.x=W/2+(Math.random()-0.5)*60;
+  G.score+=200;
+  G.floats.push({x:W/2,y:G.effigy.y-70,txt:'換隻新嘅！',col:'#7fd39b',life:1,vy:-50});
+  for(let i=0;i<18;i++) G.parts.push({x:G.effigy.x,y:G.effigy.y,vx:(Math.random()-0.5)*300,vy:-Math.random()*260,life:1.2,col:'#f3e7cf'});
+}
+
+/* ---------- 更新 ---------- */
+function update(dt){
+  G.t+=dt;
+  G.timeLeft-=dt;
+  if(G.timeLeft<=0){ endGame(); return; }
+
+  G.shake=Math.max(0,G.shake-dt*3.2);
+  G.hitFlash=Math.max(0,G.hitFlash-dt*4);
+  G.effigy.shake=Math.max(0,G.effigy.shake-dt*5);
+  G.effigy.rot+=(0-(G.effigy.rot))*Math.min(1,dt*10);
+  G.slipper.swing=Math.max(0,G.slipper.swing-dt*6);
+
+  // 按住連打（每 0.16 秒）
+  if(down && G.t-NG>-1){}
+  if(down){
+    G._hold=(G._hold||0)+dt;
+    if(G._hold>0.16){ G._hold=0; swing({x:G.slipper.x,y:G.slipper.y}); }
+  } else G._hold=0;
+
+  // 貴人出現
+  G.guestT-=dt;
+  if(!G.guest && G.guestT<=0){
+    G.guest={x:60+Math.random()*(W-120), y:140+Math.random()*80, vy:8, t:0};
+  }
+  if(G.guest){
+    G.guest.t+=dt; G.guest.y+=G.guest.vy*dt*6;
+    if(G.guest.t>4.5 || G.guest.y>H*0.42){ G.guest=null; G.guestT=6+Math.random()*5; }
+  }
+
+  // 粒子
+  for(let i=G.parts.length-1;i>=0;i--){
+    const p=G.parts[i]; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=900*dt; p.life-=dt*1.1;
+    if(p.life<=0) G.parts.splice(i,1);
+  }
+  for(let i=G.floats.length-1;i>=0;i--){
+    const f=G.floats[i]; f.y+=f.vy*dt; f.life-=dt*1.4;
+    if(f.life<=0) G.floats.splice(i,1);
+  }
+  // 煙
+  if(Math.random()<dt*8) G.smoke.push({x:70+Math.random()*20,y:H*0.62,vx:(Math.random()-.5)*6,vy:-14-Math.random()*10,life:1,r:2+Math.random()*3});
+  for(let i=G.smoke.length-1;i>=0;i--){
+    const s=G.smoke[i]; s.x+=s.vx*dt; s.y+=s.vy*dt; s.life-=dt*0.35; s.r+=dt*6;
+    if(s.life<=0) G.smoke.splice(i,1);
+  }
+}
+
+function endGame(){
+  G.running=false; G.over=true;
+  if(G.score>G.best){ G.best=G.score; localStorage.setItem('dxr_best',G.score); }
+  const g = G.score>20000?'上上籤 · 小人永不翻身':G.score>12000?'上籤 · 打得好爽':G.score>6000?'中籤 · 有氣有力':'下籤 · 手軟';
+  document.getElementById('ot').textContent='收工！';
+  document.getElementById('osc').textContent=G.score;
+  document.getElementById('og').textContent=g;
+  document.getElementById('oins').textContent='打中 '+G.hits+' 下 · 扑空 '+G.misses+' 下 · 最佳 '+G.best;
+  document.getElementById('over').style.display='flex';
+}
+
+/* ---------- 繪圖 ---------- */
+function draw(){
+  ctx.save();
+  if(G.shake>0){
+    const s=G.shake*8;
+    ctx.translate((Math.random()-.5)*s,(Math.random()-.5)*s);
+  }
+  // 背景：橋底
+  const bg=ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0,'#141015'); bg.addColorStop(0.45,'#241a14'); bg.addColorStop(1,'#0e0a07');
+  ctx.fillStyle=bg; ctx.fillRect(-20,-20,W+40,H+40);
+
+  // 橋墩
+  ctx.fillStyle='#2a2320'; ctx.fillRect(0,0,54,H); ctx.fillRect(W-54,0,54,H);
+  ctx.fillStyle='rgba(255,255,255,.04)';
+  for(let y=20;y<H;y+=46) ctx.fillRect(0,y,54,2), ctx.fillRect(W-54,y,54,2);
+
+  // 紅布神壇
+  ctx.fillStyle='#5c1a16'; ctx.fillRect(60,H*0.60,W-120,10);
+  ctx.fillStyle='#7d241d'; ctx.fillRect(60,H*0.60,W-120,4);
+
+  // 燭光
+  for(const cx of [70, W-70]){
+    const fl=0.8+Math.sin(G.t*9+cx)*0.18;
+    ctx.fillStyle='rgba(255,140,60,'+(0.12*fl)+')';
+    ctx.beginPath(); ctx.arc(cx,H*0.55,48*fl,0,7); ctx.fill();
+    ctx.fillStyle='#ffe1a3'; ctx.fillRect(cx-1.5,H*0.55-10,3,10);
+  }
+
+  // 煙
+  for(const s of G.smoke){
+    ctx.fillStyle='rgba(220,210,190,'+(0.05*s.life)+')';
+    ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,7); ctx.fill();
+  }
+
+  drawEffigy();
+
+  // 貴人紙
+  if(G.guest){
+    const g=G.guest;
+    ctx.save(); ctx.translate(g.x,g.y+Math.sin(G.t*3)*4);
+    ctx.globalAlpha=0.92;
+    ctx.fillStyle='#f7f0dd'; ctx.fillRect(-16,-26,32,44);
+    ctx.fillStyle='#c9a227'; ctx.fillRect(-16,-26,32,8);
+    ctx.fillStyle='#8a2f24'; ctx.font='bold 11px "Noto Sans TC",sans-serif'; ctx.textAlign='center';
+    ctx.fillText('貴人',0,-4); ctx.fillText('紙',0,8);
+    ctx.strokeStyle='#c9a227'; ctx.lineWidth=1.5; ctx.strokeRect(-16,-26,32,44);
+    ctx.restore();
+  }
+
+  // 紙碎
+  for(const p of G.parts){
+    ctx.globalAlpha=Math.max(0,Math.min(1,p.life));
+    ctx.fillStyle=p.col; ctx.fillRect(p.x,p.y,2.5,3.5);
+  }
+  ctx.globalAlpha=1;
+
+  // 拖鞋（跟手）
+  drawSlipper();
+
+  // 浮字
+  for(const f of G.floats){
+    ctx.globalAlpha=Math.min(1,f.life*1.6);
+    ctx.fillStyle=f.col; ctx.font='bold 15px "Noto Sans TC",sans-serif'; ctx.textAlign='center';
+    ctx.fillText(f.txt,f.x,f.y);
+  }
+  ctx.globalAlpha=1; ctx.textAlign='left';
+
+  drawHUD();
+  ctx.restore();
+}
+
+function drawEffigy(){
+  const e=G.effigy;
+  const sx=e.shake? (Math.random()-.5)*10*e.shake : 0;
+  ctx.save(); ctx.translate(e.x+sx, e.y); ctx.rotate((Math.random()-.5)*0.04*e.shake);
+  // 影
+  ctx.fillStyle='rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(0,46,26,7,0,0,7); ctx.fill();
+  // 紙身
+  ctx.fillStyle='#f3e7cf';
+  ctx.beginPath();
+  ctx.moveTo(0,-34); ctx.lineTo(-16,-18); ctx.lineTo(-13,14); ctx.lineTo(-16,44);
+  ctx.lineTo(0,40); ctx.lineTo(16,44); ctx.lineTo(13,14); ctx.lineTo(16,-18); ctx.closePath(); ctx.fill();
+  // 手
+  ctx.fillRect(-30,-22,14,7); ctx.fillRect(16,-22,14,7);
+  // 腳
+  ctx.fillRect(-14,40,10,12); ctx.fillRect(4,40,10,12);
+  // 頭（白紙）
+  ctx.fillStyle='#fbf3e0'; ctx.beginPath(); ctx.arc(0,-52,20,0,7); ctx.fill();
+  ctx.strokeStyle='#c9b48c'; ctx.lineWidth=1.5; ctx.stroke();
+  // 面：兩點眼 + 一橫嘴
+  ctx.fillStyle='#3a2f26';
+  ctx.fillRect(-8,-58,4,4); ctx.fillRect(4,-58,4,4);
+  ctx.fillRect(-7,-44,14,2);
+  // 硃砂印
+  ctx.fillStyle='#b23a2e'; ctx.fillRect(-6,8,12,12);
+  ctx.fillStyle='#f3e7cf'; ctx.font='9px "Noto Sans TC",sans-serif'; ctx.textAlign='center';
+  ctx.fillText('小人',0,17);
+  // 打凹痕跡
+  const dmg=3-e.hp;
+  if(dmg>0){ ctx.strokeStyle='rgba(120,90,60,.5)'; ctx.lineWidth=1;
+    for(let i=0;i<dmg*2;i++){ ctx.beginPath(); ctx.moveTo(-12+i*9,-30); ctx.lineTo(-6+i*9,-24); ctx.stroke(); } }
+  ctx.restore(); ctx.textAlign='left';
+}
+
+function drawSlipper(){
+  const s=G.slipper;
+  ctx.save(); ctx.translate(s.x,s.y);
+  const sw=s.swing;
+  ctx.rotate(-0.5+sw*1.1+s.angle*0.3);
+  ctx.translate(0, -sw*6);
+  // 拖鞋（藍白拖）
+  ctx.fillStyle='#2c5f8a';
+  ctx.beginPath(); ctx.ellipse(0,0,22,34,0,0,7); ctx.fill();
+  ctx.fillStyle='#1d4463';
+  ctx.beginPath(); ctx.ellipse(0,6,17,24,0,0,7); ctx.fill();
+  // 鞋帶
+  ctx.strokeStyle='#f0e6d4'; ctx.lineWidth=6; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(-13,-6); ctx.quadraticCurveTo(0,-16,13,-6); ctx.stroke();
+  ctx.restore();
+}
+
+function drawHUD(){
+  // 頂
+  ctx.fillStyle='rgba(10,8,6,.72)'; ctx.fillRect(0,0,W,46);
+  ctx.fillStyle='#ffcf6b'; ctx.font='bold 16px "Noto Sans TC",sans-serif';
+  ctx.fillText(G.score.toString(), 12, 28);
+  ctx.font='11px "Noto Sans TC",sans-serif'; ctx.fillStyle='#8a7a63';
+  ctx.fillText('最佳 '+G.best, 12, 40);
+  // 時間條
+  const tw=W-160;
+  ctx.fillStyle='#2a2320'; ctx.fillRect(120,16,tw,10);
+  ctx.fillStyle=G.timeLeft<10?'#ff5c5c':'#7fd39b';
+  ctx.fillRect(120,16,tw*Math.max(0,G.timeLeft/60),10);
+  ctx.fillStyle='#c9b79a'; ctx.font='11px "Noto Sans TC",sans-serif';
+  ctx.fillText(Math.ceil(G.timeLeft)+'s', 120, 40);
+  // 連擊
+  if(G.combo>1){
+    ctx.textAlign='right'; ctx.fillStyle='#ff8b5e'; ctx.font='bold 14px "Noto Sans TC",sans-serif';
+    ctx.fillText(G.combo+' COMBO', W-12, 28); ctx.textAlign='left';
+  }
+  // 底部提示
+  ctx.fillStyle='rgba(10,8,6,.6)'; ctx.fillRect(0,H-30,W,30);
+  ctx.fillStyle='#8a7a63'; ctx.font='11px "Noto Sans TC",sans-serif'; ctx.textAlign='center';
+  ctx.fillText('打頭 ×3 · 打身手 ×2 · 打腳 ×1.5　唔好打貴人', W/2, H-11);
+  ctx.textAlign='left';
+}
+
+/* ---------- 主循環 ---------- */
+let last=0;
+function loop(ts){
+  const dt=Math.min(0.05,(ts-last)/1000||0.016); last=ts;
+  if(G.running) update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+startGame();
+requestAnimationFrame(loop);
+if(location.search.includes('auto')){
+  setTimeout(()=>{
+    const t=setInterval(()=>{
+      if(!G.running) return clearInterval(t);
+      const z=ZONES[Math.floor(Math.random()*ZONES.length)];
+      swing({x:G.effigy.x+(z.dx||0), y:G.effigy.y+(z.dy||0)});
+    },200);
+  },600);
+}
+</script>
+</body></html>
