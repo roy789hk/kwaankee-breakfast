@@ -251,10 +251,19 @@ function draw(){
   ['打','小','人'].forEach((ch,i)=>ctx.fillText(ch,W-37,72+i*26));
   ctx.textAlign='left';
 
-  // 金銀衣紙堆（左下）
-  for(let i=0;i<3;i++){
+  // 行人路
+  ctx.fillStyle='#1a1512'; ctx.fillRect(0,H-70,W,70);
+  ctx.fillStyle='rgba(255,255,255,.05)';
+  for(let x=0;x<W;x+=36) ctx.fillRect(x,H-70,1,70);
+  for(let y=H-70;y<H;y+=24) ctx.fillRect(0,y,W,1);
+  // 紅色膠凳
+  ctx.fillStyle='#a3302a'; ctx.fillRect(W/2-46,H-96,92,10);
+  ctx.fillStyle='#7d2420'; ctx.fillRect(W/2-40,H-86,8,20); ctx.fillRect(W/2+32,H-86,8,20);
+  // 金銀衣紙堆
+  for(let i=0;i<5;i++){
     ctx.fillStyle=i%2?'#c9a227':'#d8cfae';
-    ctx.fillRect(12, H-120-i*7, 34-i*6, 6);
+    ctx.fillRect(18, H-104-i*9, 52-i*4, 8);
+    ctx.fillStyle='rgba(0,0,0,.18)'; ctx.fillRect(18, H-104-i*9+6, 52-i*4, 2);
   }
 
   // 紅布神壇
@@ -266,7 +275,11 @@ function draw(){
     const fl=0.8+Math.sin(G.t*9+cx)*0.18;
     ctx.fillStyle='rgba(255,140,60,'+(0.12*fl)+')';
     ctx.beginPath(); ctx.arc(cx,H*0.55,48*fl,0,7); ctx.fill();
-    ctx.fillStyle='#ffe1a3'; ctx.fillRect(cx-1.5,H*0.55-10,3,10);
+    // 紅燭
+    ctx.fillStyle='#8c2f24'; ctx.fillRect(cx-4,H*0.55-2,8,26);
+    ctx.fillStyle='#5e1d16'; ctx.fillRect(cx-6,H*0.55+22,12,4);
+    ctx.fillStyle='#ffe1a3'; ctx.fillRect(cx-1.5,H*0.55-12,3,10);
+    ctx.fillStyle='#fff6cf'; ctx.beginPath(); ctx.ellipse(cx,H*0.55-14,2.2,4,0,0,7); ctx.fill();
   }
 
   // 煙
