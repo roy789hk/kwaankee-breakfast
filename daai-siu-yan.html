@@ -172,7 +172,6 @@ function update(dt){
   G.slipper.swing=Math.max(0,G.slipper.swing-dt*6);
 
   // 按住連打（每 0.16 秒）
-  if(down && G.t-NG>-1){}
   if(down){
     G._hold=(G._hold||0)+dt;
     if(G._hold>0.16){ G._hold=0; swing({x:G.slipper.x,y:G.slipper.y}); }
