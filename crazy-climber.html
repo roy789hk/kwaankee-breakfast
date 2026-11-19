@@ -149,6 +149,9 @@ function zone(side){
   z.addEventListener('touchend',()=>{ s.active=false; s.fired=false; s.dx=s.dy=0; },{passive:true});
 }
 zone('L'); zone('R');
+// 任何第一次觸碰都解鎖音訊（手機 autoplay 限制）
+document.addEventListener('pointerdown',()=>{ try{ (AC||audio()).resume(); if(!musicTimer) startMusic(); }catch(e){} },{once:true});
+document.addEventListener('touchstart',()=>{ try{ (AC||audio()).resume(); if(!musicTimer) startMusic(); }catch(e){} },{once:true});
 
 function clampX(x){ return Math.max(X0+22, Math.min(W-X0-22, x)); }
 function up(side){
