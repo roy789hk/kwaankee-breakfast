@@ -2,333 +2,429 @@
 <html lang="zh-Hant"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>Crazy Climber · 重製 Demo</title>
+<title>Crazy Climber · 重製 v2</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{height:100%;background:#07080c;overflow:hidden;font-family:"Noto Sans TC",system-ui,sans-serif;color:#e8eef5}
+  html,body{height:100%;background:#05070b;overflow:hidden;font-family:"Noto Sans TC",system-ui,sans-serif;color:#e8eef5}
   #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
   canvas{display:block;image-rendering:pixelated;touch-action:none}
-  .zone{position:fixed;top:0;bottom:0;width:50%;z-index:5}
-  #zl{left:0}#zr{right:0}
-  #hint{position:fixed;left:0;right:0;bottom:14px;text-align:center;font-size:11px;color:#6b7a8c;pointer-events:none;z-index:6}
   #over{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:#05070bdd;z-index:20;text-align:center}
   #over .box{padding:26px 30px;border:2px solid #2b3a4a;border-radius:16px;background:#0d141c}
   #over h1{font-size:26px;letter-spacing:3px;margin-bottom:8px}
   #over p{font-size:13px;color:#9fb0c2;line-height:1.9}
   #over b{color:#ffd166;font-size:20px}
   .btn{margin-top:14px;padding:12px 22px;border-radius:10px;background:#2f6f4f;color:#fff;font-size:14px;font-weight:700;border:0}
+  #snd{position:fixed;right:10px;bottom:10px;z-index:9;background:#101a26cc;border:1px solid #2b3a4a;color:#9fb0c2;border-radius:10px;padding:8px 10px;font-size:12px}
 </style></head><body>
 <div id="wrap"><canvas id="c" width="360" height="640"></canvas></div>
-<div class="zone" id="zl"></div><div class="zone" id="zr"></div>
-<div id="hint">左半螢幕＝左手　右半螢幕＝右手　向上一推＝抓窗台</div>
 <div id="over"><div class="box">
   <h1 id="ot">GAME OVER</h1>
   <p>爬到 <b id="ofl">0</b> 層<br>得分 <b id="osc">0</b><br><span id="oinfo"></span></p>
   <button class="btn" onclick="restart()">再玩一次</button>
 </div></div>
+<button id="snd" onclick="toggleSound()">♪ 音樂：開</button>
 
 <script>
-const cv = document.getElementById('c'), ctx = cv.getContext('2d');
-const W = 360, H = 640;
-const COLS = 5, COLW = 64, X0 = (W - COLS*COLW)/2;   // 大廈窗戶網格
-const FH = 52;                                        // 每層高
-const TOP_FLOOR = 40;                                 // 爬 26 層就過關
+/* ================= 基本設定 ================= */
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+const W=360,H=640;
+const COLS=5, COLW=64, X0=(W-COLS*COLW)/2;
+const FH=54, TOP_FLOOR=40;
+const GY=0;   // 地面層
 
-const S = {           // 遊戲狀態
-  running:false, over:false, win:false,
-  bodyY: 0, bodyX: W/2,
-  vy: 0,
-  gripL: 0, gripR: 0,        // 每隻手向上抓咗幾層（0–2）
-  lives: 3, score: 0,
-  floors: 0,
-  invuln: 0,
-  t: 0,
-  winFloors: 0,
-  objects: [],
-  windows: [],       // 每格窗狀態
-  camY: 0,
+const S={
+  running:false, over:false,
+  bodyY:0, bodyX:W/2, drawY:0,
+  gripL:0, gripR:0, armL:0, armR:0,
+  lives:3, score:0, floors:0, invuln:0, t:0,
+  objects:[], windows:[], camY:0,
+  climbFx:0, hitFx:0,
+  best: +(localStorage.getItem('cc_best')||0)
 };
 
-/* ---------- 窗戶網格：每格有開合節奏 ---------- */
+/* ================= 音效 / 音樂 ================= */
+let AC=null, musicOn=true, musicTimer=null, musicStep=0;
+function audio(){ if(!AC) AC=new (window.AudioContext||window.webkitAudioContext)(); return AC; }
+function beep(freq,dur,type='square',vol=0.06){
+  if(!musicOn) return;
+  try{
+    const a=audio(), o=a.createOscillator(), g=a.createGain();
+    o.type=type; o.frequency.value=freq;
+    g.gain.setValueAtTime(vol,a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+dur);
+    o.connect(g); g.connect(a.destination); o.start(); o.stop(a.currentTime+dur);
+  }catch(e){}
+}
+// 8-bit 循環：Am - F - C - G
+const BASS=[110,87.3,130.8,98];
+const ARP=[[220,261.6,329.6],[174.6,220,261.6],[261.6,329.6,392],[196,246.9,293.7]];
+function musicTick(){
+  if(!musicOn||!S.running) return;
+  const bar=Math.floor(musicStep/4)%4, n=musicStep%4;
+  const f=ARP[bar][n%3]*(n===3?2:1);
+  beep(f,0.12,'square',0.035);
+  if(n===0) beep(BASS[bar],0.22,'triangle',0.06);
+  musicStep++;
+}
+function startMusic(){
+  if(musicTimer) clearInterval(musicTimer);
+  musicTimer=setInterval(musicTick,190);
+}
+function toggleSound(){
+  musicOn=!musicOn;
+  document.getElementById('snd').textContent = musicOn?'♪ 音樂：開':'♪ 音樂：關';
+  if(musicOn){ audio().resume && audio().resume(); } else if(AC){ /* 靜音 */ }
+}
+
+/* ================= 窗戶 / 樓層裝飾 ================= */
 function buildWindows(){
-  S.windows = [];
-  for(let r=0;r<TOP_FLOOR+6;r++){
+  S.windows=[]; S.deco=[];
+  for(let r=0;r<TOP_FLOOR+8;r++){
     const row=[];
     for(let c=0;c<COLS;c++){
-      row.push({
-        phase: Math.random()*6.28,
-        speed: 0.6 + Math.random()*0.9,
-        closed: false
-      });
+      row.push({phase:Math.random()*6.28, speed:0.5+Math.random()*0.8, closed:false,
+                lit:Math.random()<0.55, ac:Math.random()<0.22});
     }
     S.windows.push(row);
+    S.deco.push({
+      balcony: r%6===2,
+      pipe: (r%9===0)? (Math.random()<0.5?0:COLS-1) : -1,
+      sign: (r%11===4),
+      antenna: r===TOP_FLOOR-1
+    });
   }
 }
 
-/* ---------- 重開 ---------- */
+/* ================= 遊戲流程 ================= */
 function restart(){
-  S.running=true; S.over=false; S.win=false;
-  S.bodyY=0; S.bodyX=W/2; S.vy=0;
-  S.gripL=0; S.gripR=0;
+  S.running=true; S.over=false;
+  S.bodyY=0; S.bodyX=W/2; S.drawY=0;
+  S.gripL=0; S.gripR=0; S.armL=0; S.armR=0;
   S.lives=3; S.score=0; S.floors=0; S.invuln=0; S.winFloors=0;
-  S.objects=[]; S.camY=0; S.t=0;
+  S.objects=[]; S.camY=0; S.t=0; S.climbFx=0; S.hitFx=0;
   buildWindows();
   document.getElementById('over').style.display='none';
+  startMusic();
+  audio().resume && audio().resume();
+}
+function gameOver(win){
+  S.running=false; S.over=true;
+  if(S.score>S.best){ S.best=S.score; localStorage.setItem('cc_best',S.score); }
+  document.getElementById('ot').textContent=win?'CLEAR!':'GAME OVER';
+  document.getElementById('ofl').textContent=Math.floor(S.bodyY/FH);
+  document.getElementById('osc').textContent=S.score;
+  document.getElementById('oinfo').textContent = win?'你爬完 40 層！':'最高分 '+S.best;
+  document.getElementById('over').style.display='flex';
+  if(musicTimer){ clearInterval(musicTimer); musicTimer=null; }
 }
 
-/* ---------- 輸入 ---------- */
+/* ================= 輸入 ================= */
 const keys={};
 addEventListener('keydown',e=>{
   const k=e.key.toLowerCase();
   if(['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d'].includes(k)) e.preventDefault();
-  if(!keys[k]){ keys[k]=true; onDir(k); }
+  if(!keys[k]){ keys[k]=1; if(k==='w')up('L'); if(k==='arrowup')up('R'); if(k==='s')down('L'); if(k==='arrowdown')down('R'); }
+  if(!AC) { try{audio().resume();}catch(e){} }
 });
-addEventListener('keyup',e=>{ keys[e.key.toLowerCase()]=false; });
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=0);
 
-function onDir(k){
-  if(!S.running) return;
-  if(k==='w') up('L');
-  if(k==='arrowup') up('R');
-  if(k==='s') down('L');
-  if(k==='arrowdown') down('R');
-}
-
-/* ---------- 觸控：左右兩半各一支虛擬搖桿 ---------- */
-function stick(el, side){
-  let sx=0, sy=0, active=false, fired=false;
-  el.addEventListener('touchstart',e=>{
-    const t=e.changedTouches[0]; sx=t.clientX; sy=t.clientY; active=true; fired=false;
+const sticks={L:{x:78,y:H-92,dx:0,dy:0,active:false,fired:false}, R:{x:W-78,y:H-92,dx:0,dy:0,active:false,fired:false}};
+function zone(side){
+  const z=document.createElement('div');
+  z.style.cssText='position:fixed;top:0;bottom:0;width:50%;z-index:5;'+(side==='L'?'left:0':'right:0');
+  document.body.appendChild(z);
+  const s=sticks[side];
+  z.addEventListener('touchstart',e=>{
+    const t=e.changedTouches[0]; s.baseX=t.clientX; s.baseY=t.clientY; s.active=true; s.fired=false;
+    s.dx=0; s.dy=0;
   },{passive:true});
-  el.addEventListener('touchmove',e=>{
-    if(!active) return;
+  z.addEventListener('touchmove',e=>{
+    if(!s.active) return;
     const t=e.changedTouches[0];
-    const dx=t.clientX-sx, dy=t.clientY-sy;
-    if(dy<-24 && !fired){ fired=true; up(side); }
-    if(dy>24 && !fired){ fired=true; down(side); }
-    if(Math.abs(dx)>26){ S.bodyX += dx>0?8:-8; S.bodyX=clampX(S.bodyX); sx=t.clientX; sy=t.clientY; }
+    s.dx=Math.max(-34,Math.min(34,t.clientX-s.baseX));
+    s.dy=Math.max(-34,Math.min(34,t.clientY-s.baseY));
+    if(s.dy<-20 && !s.fired){ s.fired=true; up(side); }
+    if(Math.abs(s.dx)>24){ S.bodyX=clampX(S.bodyX+s.dx*0.35); s.baseX=t.clientX; s.dx=0; }
   },{passive:true});
-  el.addEventListener('touchend',()=>{ active=false; fired=false; },{passive:true});
-  // 桌面滑鼠點擊也可抓
-  el.addEventListener('pointerdown',e=>{ if(e.pointerType==='mouse') up(side); });
+  z.addEventListener('touchend',()=>{ s.active=false; s.fired=false; s.dx=s.dy=0; },{passive:true});
 }
-stick(document.getElementById('zl'),'L');
-stick(document.getElementById('zr'),'R');
+zone('L'); zone('R');
 
-function clampX(x){ return Math.max(X0+20, Math.min(W-X0-20, x)); }
-
-/* ---------- 抓 / 放 ---------- */
+function clampX(x){ return Math.max(X0+22, Math.min(W-X0-22, x)); }
 function up(side){
   if(!S.running) return;
-  if(side==='L'){ if(S.gripL<2) S.gripL++; }
-  else { if(S.gripR<2) S.gripR++; }
+  if(side==='L'){ if(S.gripL<2){ S.gripL++; S.armL=1; } }
+  else { if(S.gripR<2){ S.gripR++; S.armR=1; } }
+  beep(520,0.05,'square',0.05);
 }
 function down(side){
-  if(side==='L') S.gripL=Math.max(0,S.gripL-1);
-  else S.gripR=Math.max(0,S.gripR-1);
+  if(side==='L') S.gripL=Math.max(0,S.gripL-1); else S.gripR=Math.max(0,S.gripR-1);
 }
-// 左右鍵移動
 function moveKeys(){
-  const l=(keys['a']||0) - (keys['d']||0);
-  const r=(keys['arrowleft']||0) - (keys['arrowright']||0);
-  S.bodyX = clampX(S.bodyX + (l+r)*3);
+  const d=((keys['a']?1:0)-(keys['d']?1:0))+((keys['arrowleft']?1:0)-(keys['arrowright']?1:0));
+  if(d) S.bodyX=clampX(S.bodyX+d*3.2);
 }
 
-/* ---------- 掉落物 ---------- */
-function spawnObject(){
-  const types=['flower','bar','sign','piano'];
-  const t=types[Math.floor(Math.random()*types.length)];
-  S.objects.push({
-    x: X0 + 10 + Math.random()*(COLS*COLW-20),
-    y: S.camY - 60,
-    vy: 1.6 + Math.random()*1.6,
-    w: t==='piano'?34:t==='sign'?26:t==='bar'?8:16,
-    h: t==='piano'?22:t==='sign'?18:t==='bar'?26:16,
-    type:t, rot:(Math.random()-.5)*0.06
-  });
-}
-
-/* ---------- 主循環 ---------- */
-let last=0, acc=0;
+/* ================= 更新 ================= */
+let last=0;
 function loop(ts){
   const dt=Math.min(0.05,(ts-last)/1000||0.016); last=ts;
-  if(S.running && !S.over) update(dt);
-  draw();
+  if(S.running) update(dt);
+  draw(dt);
   requestAnimationFrame(loop);
 }
-
 function update(dt){
-  S.t += dt;
-  moveKeys();
+  S.t+=dt; moveKeys();
+  S.armL=Math.max(0,S.armL-dt*3); S.armR=Math.max(0,S.armR-dt*3);
+  S.climbFx=Math.max(0,S.climbFx-dt*4); S.hitFx=Math.max(0,S.hitFx-dt*2);
+  if(S.invuln>0) S.invuln-=dt;
 
-  // 手勢節奏：兩隻手都至少抓高一層 → 身體上升一層
+  // 兩手都抓高一層 → 升一層
   if(S.gripL>=1 && S.gripR>=1){
-    const climb=Math.min(S.gripL,S.gripR);
-    S.bodyY += FH*climb;
-    S.gripL-=climb; S.gripR-=climb;
-    S.floors += climb;
-    S.score += climb*10;
-    // 抓窗時，如果嗰格窗關上 → 手滑
+    const n=Math.min(S.gripL,S.gripR);
+    S.bodyY+=FH*n; S.gripL-=n; S.gripR-=n;
+    S.floors+=n; S.score+=n*10; S.climbFx=1;
+    beep(300,0.08,'square',0.04);
   }
-  // 窗會夾手：grip>0 時，隨機令窗關
-  if(S.windows.length){
-    const r=Math.floor(S.bodyY/FH);
-    for(let c=0;c<COLS;c++){
-      const w=S.windows[Math.min(r+1,TOP_FLOOR+5)]?.[c];
-      if(!w) continue;
-      w.closed = Math.sin(S.t*w.speed + w.phase) < -0.55;
-    }
+
+  // 窗開合
+  const r=Math.floor(S.bodyY/FH);
+  for(let c=0;c<COLS;c++){
+    const w=S.windows[Math.min(r+1,TOP_FLOOR+7)]?.[c];
+    if(w) w.closed=Math.sin(S.t*w.speed+w.phase)<-0.6;
   }
-  // 跌落物
-  if(S.t>2.5 && Math.random() < dt*0.6) spawnObject();
+
+  // 掉落物
+  if(S.t>2.0 && Math.random()<dt*0.6) spawn();
   for(let i=S.objects.length-1;i>=0;i--){
     const o=S.objects[i];
-    o.y += o.vy*52*dt;
-    if(o.y > S.bodyY + 120) { S.objects.splice(i,1); continue; }
-    // 碰撞（身體）
-    const bx=S.bodyX, by=S.bodyY;
-    if(S.invuln<=0 && Math.abs(o.x-bx)<13+o.w/2 && Math.abs(o.y-by)<20+o.h/2){
-      S.lives--; S.invuln=2.6; S.objects.splice(i,1);
-      S.bodyY = Math.max(0, S.bodyY - FH*2);   // 撞落兩層
-      if(S.lives<=0) gameOver(false);
-      continue;
+    o.y+=o.vy*52*dt; o.rot+=o.spin*dt;
+    if(o.y>S.bodyY+140){ S.objects.splice(i,1); continue; }
+    if(S.invuln<=0 && Math.abs(o.x-S.bodyX)<12+o.w/2 && Math.abs(o.y-S.bodyY)<18+o.h/2){
+      S.lives--; S.invuln=2.6; S.hitFx=1; S.objects.splice(i,1);
+      S.bodyY=Math.max(0,S.bodyY-FH*2); S.score=Math.max(0,S.score-20);
+      beep(120,0.25,'sawtooth',0.09);
+      if(S.lives<=0){ gameOver(false); return; }
     }
   }
-  if(S.invuln>0) S.invuln -= dt;
-
-  // 過關
-  if(S.bodyY >= TOP_FLOOR*FH){ gameOver(true); }
-
-  // 跌到地面（負數）當無事，但唔可以低過 0
+  if(S.bodyY>=TOP_FLOOR*FH){ gameOver(true); return; }
   if(S.bodyY<0) S.bodyY=0;
 
-  // 相機
-  const target = Math.max(0, S.bodyY - H*0.55);
-  S.camY += (target - S.camY) * Math.min(1, dt*6);
+  // 平滑鏡頭 + 平滑角色位置
+  const target=Math.max(0,S.bodyY-H*0.55);
+  S.camY+=(target-S.camY)*Math.min(1,dt*6);
+  S.drawY+=(S.bodyY-S.drawY)*Math.min(1,dt*12);
+}
+function spawn(){
+  const t=['flower','bar','sign','piano'][Math.floor(Math.random()*4)];
+  S.objects.push({x:X0+12+Math.random()*(COLS*COLW-24), y:S.camY-70,
+    vy:1.5+Math.random()*1.6, w:t==='piano'?34:t==='sign'?26:t==='bar'?8:16,
+    h:t==='piano'?22:t==='sign'?18:t==='bar'?26:16, type:t, rot:0, spin:(Math.random()-0.5)*1.5});
 }
 
-function gameOver(win){
-  S.running=false; S.over=true; S.win=win;
-  document.getElementById('ot').textContent = win ? 'CLEAR!' : 'GAME OVER';
-  document.getElementById('ofl').textContent = Math.floor(S.bodyY/FH);
-  document.getElementById('osc').textContent = S.score;
-  document.getElementById('oinfo').textContent = win ? '你爬完 26 層，直升機喺天台等你' : '再試一次，記住兩隻手要輪流上';
-  document.getElementById('over').style.display='flex';
-}
+/* ================= 繪圖 ================= */
+function yOf(worldY){ return H-(worldY-S.camY)-40; }
 
-/* ---------- 繪圖 ---------- */
 function draw(){
-  ctx.imageSmoothingEnabled=false;
-  // 夜空
+  // 天空
   const g=ctx.createLinearGradient(0,0,0,H);
-  g.addColorStop(0,'#0b1020'); g.addColorStop(0.6,'#131c2e'); g.addColorStop(1,'#0a0f18');
+  g.addColorStop(0,'#080d18'); g.addColorStop(0.5,'#12203a'); g.addColorStop(1,'#1b2b45');
   ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
 
-  // 星
-  for(let i=0;i<40;i++){
-    const x=(i*97)%W, y=(i*53 + (S.camY*0.2))%H;
-    ctx.fillStyle = i%7===0?'#ffe9a8':'#3b4a63';
-    ctx.fillRect(x, y, 1, 1);
+  // 月亮
+  ctx.fillStyle='#f4e6b8'; ctx.beginPath(); ctx.arc(300,70,20,0,7); ctx.fill();
+  ctx.fillStyle='rgba(244,230,184,.10)'; ctx.beginPath(); ctx.arc(300,70,40,0,7); ctx.fill();
+
+  // 遠景天際線（視差）
+  drawSkyline(0.25,'#0d1626',90);
+  drawSkyline(0.5,'#0a1220',60);
+
+  // 雲
+  for(let i=0;i<5;i++){
+    const cx=((i*97+S.t*7)%(W+80))-40, cy=60+((i*61)%120);
+    ctx.fillStyle='rgba(120,150,190,.10)';
+    ctx.beginPath(); ctx.ellipse(cx,cy,34,10,0,0,7); ctx.fill();
   }
 
-  // 大廈
-  const bx0=X0-8, bw=COLS*COLW+16;
-  ctx.fillStyle='#16202f'; ctx.fillRect(bx0,0,bw,H);
+  // 大廈本體
+  const bx0=X0-10, bw=COLS*COLW+20;
+  ctx.fillStyle='#1a2536'; ctx.fillRect(bx0,0,bw,H);
+  // 外牆紋理
+  ctx.fillStyle='rgba(255,255,255,.025)';
+  for(let y=0;y<H;y+=6) ctx.fillRect(bx0,y,bw,1);
 
-  // 窗戶
-  const startFloor=Math.floor(S.camY/FH), endFloor=startFloor+Math.ceil(H/FH)+2;
-  for(let r=startFloor;r<endFloor;r++){
-    if(r<0) continue;
-    const wy = H - (r*FH - S.camY) - FH;   // 由底往上
+  // 樓層
+  const f0=Math.floor(S.camY/FH)-1, f1=f0+Math.ceil(H/FH)+3;
+  for(let r=Math.max(0,f0);r<f1;r++){
+    const wy=yOf(r*FH)-FH+40;   // 該層窗頂
+    const d=S.deco[r]||{};
+    // 窗
     for(let c=0;c<COLS;c++){
-      const wx = X0 + c*COLW + 12;
-      const w = S.windows[Math.min(r,TOP_FLOOR+5)]?.[c];
-      const closed = w? w.closed : false;
+      const wx=X0+c*COLW+11;
+      const w=S.windows[Math.min(r,TOP_FLOOR+7)]?.[c]||{};
+      const ww=COLW-22, wh=FH-22;
       // 窗框
-      ctx.fillStyle='#26384d'; ctx.fillRect(wx-4, wy+6, COLW-16, FH-16);
-      if(closed){
-        ctx.fillStyle='#0e1622'; ctx.fillRect(wx, wy+10, COLW-24, FH-24);
-        ctx.strokeStyle='#3d3013'; ctx.lineWidth=1;
-        ctx.strokeRect(wx+0.5, wy+10.5, COLW-24, FH-24);
+      ctx.fillStyle='#223247'; ctx.fillRect(wx-3,wy+6,ww+6,wh+6);
+      if(w.closed){
+        ctx.fillStyle='#0b131d'; ctx.fillRect(wx,wy+9,ww,wh);
+        ctx.strokeStyle='#3b2c12'; ctx.strokeRect(wx+.5,wy+9.5,ww-1,wh-1);
       }else{
-        const lit = ((r*7+c*13)%5)<2;
-        ctx.fillStyle = lit ? '#ffd98a' : '#1d2c3e';
-        ctx.fillRect(wx, wy+10, COLW-24, FH-24);
-        if(lit){ ctx.fillStyle='rgba(255,217,138,.18)'; ctx.fillRect(wx-6, wy+4, COLW-12, FH-8); }
-        // 窗台（抓手位）
-        ctx.fillStyle='#5b7fa6'; ctx.fillRect(wx-6, wy+FH-18, COLW-12, 4);
+        ctx.fillStyle=w.lit?'#ffd98a':'#16222f';
+        ctx.fillRect(wx,wy+9,ww,wh);
+        if(w.lit){
+          ctx.fillStyle='rgba(255,217,138,.16)'; ctx.fillRect(wx-7,wy+3,ww+14,wh+10);
+          // 窗內剪影
+          ctx.fillStyle='rgba(60,45,25,.35)'; ctx.fillRect(wx+4,wy+wh-10,ww-8,7);
+        }
+        // 窗台
+        ctx.fillStyle='#6d90b8'; ctx.fillRect(wx-6,wy+wh+8,ww+12,3);
       }
+      // 冷氣機
+      if(w.ac){ ctx.fillStyle='#9aa7b5'; ctx.fillRect(wx+ww-12,wy+wh+2,14,9);
+        ctx.fillStyle='#6d7a88'; ctx.fillRect(wx+ww-10,wy+wh+5,10,3); }
     }
-    // 樓層線
-    ctx.fillStyle='rgba(255,255,255,.04)'; ctx.fillRect(bx0, wy+FH-2, bw, 1);
+    // 露台
+    if(d.balcony){
+      ctx.fillStyle='#2c3f57'; ctx.fillRect(bx0+6,wy+FH-6,bw-12,4);
+      ctx.fillStyle='#4a6484';
+      for(let x=bx0+10;x<bx0+bw-10;x+=10) ctx.fillRect(x,wy+FH-14,2,9);
+    }
+    // 直喉管
+    if(d.pipe>=0){ ctx.fillStyle='#33475e'; ctx.fillRect(X0+d.pipe*COLW+6,wy+2,4,FH); }
+    // 招牌
+    if(d.sign){
+      const sx=bx0-6, sy=wy+FH*0.3;
+      ctx.fillStyle='#12233a'; ctx.fillRect(sx-16,sy,18,44);
+      ctx.fillStyle=(Math.floor(S.t*3)%2)?'#ff6b8a':'#ffd166';
+      ctx.fillRect(sx-13,sy+4,12,4); ctx.fillRect(sx-13,sy+12,12,4); ctx.fillRect(sx-13,sy+20,12,4);
+    }
+    // 天線
+    if(d.antenna){
+      ctx.strokeStyle='#5a7593'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(W/2,wy-FH); ctx.lineTo(W/2,wy-FH-26); ctx.stroke();
+      ctx.beginPath(); ctx.arc(W/2,wy-FH-28,3,0,7); ctx.fillStyle='#ff5c5c'; ctx.fill();
+    }
+  }
+
+  // 地面
+  const gy=yOf(0);
+  if(gy<H+60){
+    ctx.fillStyle='#0a1018'; ctx.fillRect(0,gy+22,W,H-gy);
+    ctx.fillStyle='#16202c'; ctx.fillRect(0,gy+22,W,6);
+    for(let x=10;x<W;x+=70){
+      ctx.fillStyle='#2a3a4e'; ctx.fillRect(x,gy+30,3,26);
+      ctx.fillStyle='#ffd98a'; ctx.beginPath(); ctx.arc(x+1,gy+28,4,0,7); ctx.fill();
+    }
   }
 
   // 掉落物
   for(const o of S.objects){
-    const sy = H - (o.y - S.camY) - 40;
-    if(sy<-60||sy>H+60) continue;
-    ctx.save(); ctx.translate(o.x, sy); ctx.rotate(o.rot*S.t);
-    if(o.type==='flower'){ ctx.fillStyle='#b8543f'; ctx.fillRect(-8,-6,16,12); ctx.fillStyle='#4f8a52'; ctx.fillRect(-2,4,4,10); }
+    const sy=yOf(o.y);
+    if(sy<-70||sy>H+70) continue;
+    ctx.save(); ctx.translate(o.x,sy); ctx.rotate(o.rot);
+    if(o.type==='flower'){ ctx.fillStyle='#b8543f'; ctx.fillRect(-8,-6,16,12);
+      ctx.fillStyle='#4f8a52'; ctx.fillRect(-2,4,4,10); }
     if(o.type==='bar'){ ctx.fillStyle='#9aa7b5'; ctx.fillRect(-4,-13,8,26); }
-    if(o.type==='sign'){ ctx.fillStyle='#e0a33c'; ctx.fillRect(-13,-9,26,18); ctx.fillStyle='#2b2118'; ctx.fillRect(-9,-4,18,3); }
-    if(o.type==='piano'){ ctx.fillStyle='#1b1b22'; ctx.fillRect(-17,-11,34,22); ctx.fillStyle='#f0e6d4'; ctx.fillRect(-14,-2,28,5); }
+    if(o.type==='sign'){ ctx.fillStyle='#e0a33c'; ctx.fillRect(-13,-9,26,18);
+      ctx.fillStyle='#2b2118'; ctx.fillRect(-9,-4,18,3); }
+    if(o.type==='piano'){ ctx.fillStyle='#1b1b22'; ctx.fillRect(-17,-11,34,22);
+      ctx.fillStyle='#f0e6d4'; ctx.fillRect(-14,-2,28,5); }
     ctx.restore();
   }
 
-  // 攀爬者
-  const py = H - (S.bodyY - S.camY) - 40;
-  drawClimber(S.bodyX, py, S.gripL, S.gripR, S.invuln>0 && Math.floor(S.t*12)%2===0);
+  // 角色
+  const py=yOf(S.drawY);
+  drawClimber(S.bodyX,py);
 
-  // 地面
-  const gy = H - (0 - S.camY) - 40;
-  if(gy<H+40){ ctx.fillStyle='#0a1017'; ctx.fillRect(0, gy+18, W, H-gy); }
-
-  // HUD
-  ctx.fillStyle='rgba(5,8,12,.72)'; ctx.fillRect(0,0,W,44);
-  ctx.fillStyle='#e8eef5'; ctx.font='bold 14px "Noto Sans TC",sans-serif';
-  ctx.fillText('SCORE '+S.score, 12, 20);
-  const fl=Math.floor(S.bodyY/FH);
-  ctx.fillText('FLOOR '+fl+'/'+TOP_FLOOR, 150, 20);
-  ctx.fillText('LIFE', 285, 20);
-  for(let i=0;i<S.lives;i++){ ctx.fillStyle='#ff6b6b'; ctx.fillRect(325+i*11, 10, 8, 8); }
-
-  // 手感提示：兩隻手狀態
-  ctx.font='11px "Noto Sans TC",sans-serif'; ctx.fillStyle='#7f93a8';
-  ctx.fillText('L '+ '●'.repeat(S.gripL) + '○'.repeat(2-S.gripL), 12, 34);
-  ctx.fillText('R '+ '●'.repeat(S.gripR) + '○'.repeat(2-S.gripR), 80, 34);
+  drawHUD();
+  drawSticks();
 }
 
-function drawClimber(x, y, gl, gr, blink){
-  if(blink) return;
-  ctx.save(); ctx.translate(x, y);
-  // 身
-  ctx.fillStyle='#3f6f9e'; ctx.fillRect(-7,-10,14,22);
-  // 頭
-  ctx.fillStyle='#f0c9a0'; ctx.fillRect(-6,-20,12,11);
-  ctx.fillStyle='#22303f'; ctx.fillRect(-6,-20,12,4);
-  // 腳
-  ctx.fillStyle='#2b3a4a'; ctx.fillRect(-6,12,4,8); ctx.fillRect(2,12,4,8);
-  // 手（依抓高層數伸展）
-  ctx.strokeStyle='#3f6f9e'; ctx.lineWidth=4; ctx.lineCap='round';
-  ctx.beginPath(); ctx.moveTo(-6,-6); ctx.lineTo(-12,-10-gl*12); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(6,-6);  ctx.lineTo(12,-10-gr*12); ctx.stroke();
-  // 手掌
+function drawSkyline(par,col,h){
+  ctx.fillStyle=col;
+  for(let i=0;i<8;i++){
+    const w=40+((i*37)%30), x=(i*52 - (S.camY*par)%260+260)%(W+80)-40;
+    const hh=h+((i*29)%70);
+    ctx.fillRect(x,H-hh-((S.camY*par)%40),w,hh+80);
+    // 窗光
+    ctx.fillStyle='rgba(255,217,138,.13)';
+    for(let yy=H-hh-30;yy<H;yy+=12) for(let xx=x+6;xx<x+w-6;xx+=12) if(((xx+yy)/12|0)%3===0) ctx.fillRect(xx,yy,3,4);
+    ctx.fillStyle=col;
+  }
+}
+
+function drawClimber(x,y){
+  if(S.invuln>0 && Math.floor(S.t*12)%2===0) return;
+  const bob=Math.sin(S.t*8)*1.2 + S.climbFx*4;
+  ctx.save(); ctx.translate(x,y-bob);
+  const reachL=10+S.gripL*11+S.armL*4;
+  const reachR=10+S.gripR*11+S.armR*4;
+  // 影
+  ctx.fillStyle='rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(0,26,13,4,0,0,7); ctx.fill();
+  // 手
+  ctx.strokeStyle='#2f5f8c'; ctx.lineWidth=5; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(-5,-8); ctx.lineTo(-13,-reachL); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(5,-8);  ctx.lineTo(13,-reachR); ctx.stroke();
   ctx.fillStyle='#f0c9a0';
-  ctx.beginPath(); ctx.arc(-12,-10-gl*12,3,0,7); ctx.fill();
-  ctx.beginPath(); ctx.arc(12,-10-gr*12,3,0,7); ctx.fill();
+  ctx.beginPath(); ctx.arc(-13,-reachL,3.4,0,7); ctx.fill();
+  ctx.beginPath(); ctx.arc(13,-reachR,3.4,0,7); ctx.fill();
+  // 身
+  ctx.fillStyle='#3f76ab'; ctx.fillRect(-8,-12,16,24);
+  ctx.fillStyle='#2f5f8c'; ctx.fillRect(-8,2,16,4);
+  // 腳
+  const swing=Math.sin(S.t*6)*4;
+  ctx.fillStyle='#243444'; ctx.fillRect(-7+swing,12,5,9); ctx.fillRect(2-swing,12,5,9);
+  // 頭
+  ctx.fillStyle='#f0c9a0'; ctx.fillRect(-6,-23,12,12);
+  ctx.fillStyle='#22303f'; ctx.fillRect(-6,-23,12,4);
+  ctx.fillStyle='#1a1a22'; ctx.fillRect(-3.5,-17,2,2); ctx.fillRect(1.5,-17,2,2);
   ctx.restore();
 }
 
+function drawHUD(){
+  ctx.fillStyle='rgba(5,8,12,.75)'; ctx.fillRect(0,0,W,42);
+  ctx.fillStyle='#e8eef5'; ctx.font='bold 13px "Noto Sans TC",sans-serif';
+  ctx.fillText('SCORE '+S.score,10,18);
+  ctx.fillText('FLOOR '+Math.floor(S.bodyY/FH)+'/'+TOP_FLOOR,138,18);
+  for(let i=0;i<S.lives;i++){ ctx.fillStyle='#ff6b6b'; ctx.fillRect(W-28-i*11,10,8,8); }
+  // 手狀態
+  ctx.font='10px "Noto Sans TC",sans-serif';
+  ctx.fillStyle=S.gripL?'#7fd39b':'#5b6b7d'; ctx.fillText('左手 '+['○','◔','●'][Math.min(2,S.gripL)],10,34);
+  ctx.fillStyle=S.gripR?'#7fd39b':'#5b6b7d'; ctx.fillText('右手 '+['○','◔','●'][Math.min(2,S.gripR)],78,34);
+  ctx.fillStyle='#5b6b7d'; ctx.fillText('最佳 '+S.best, W-70, 34);
+}
+
+function drawSticks(){
+  for(const side of ['L','R']){
+    const s=sticks[side];
+    const cx=s.x, cy=s.y;
+    ctx.globalAlpha=0.35;
+    ctx.strokeStyle='#7fa8c9'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(cx,cy,34,0,7); ctx.stroke();
+    ctx.globalAlpha=0.18; ctx.fillStyle='#1b2b3d'; ctx.beginPath(); ctx.arc(cx,cy,33,0,7); ctx.fill();
+    // 十字提示
+    ctx.globalAlpha=0.5; ctx.fillStyle='#9fc2e0'; ctx.font='12px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('▲', cx, cy-16);
+    ctx.textAlign='left';
+    // knob
+    const kx=cx+s.dx, ky=cy+s.dy;
+    ctx.globalAlpha=0.85; ctx.fillStyle='#3f76ab';
+    ctx.beginPath(); ctx.arc(kx,ky,15,0,7); ctx.fill();
+    ctx.strokeStyle='#9fc2e0'; ctx.lineWidth=2; ctx.stroke();
+    ctx.globalAlpha=1;
+  }
+}
+
+/* ================= 啟動 ================= */
 restart();
+S.running=true;
 requestAnimationFrame(loop);
 
-/* 自動示範 ?auto=1 */
 if(location.search.includes('auto')){
   setTimeout(()=>{
-    let i=0;
-    const seq=[()=>up('L'),()=>up('R'),()=>up('L'),()=>up('R'),()=>up('L'),()=>up('R'),
-               ()=>up('L'),()=>up('R'),()=>up('L'),()=>up('R')];
-    const t=setInterval(()=>{ if(i>=seq.length) return clearInterval(t); seq[i++](); },320);
-  },700);
+    let i=0; const seq=['L','R','L','R','L','R','L','R'];
+    const t=setInterval(()=>{ if(i>=seq.length) return clearInterval(t); up(seq[i++]); },340);
+  },800);
 }
 </script>
 </body></html>
