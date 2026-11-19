@@ -74,6 +74,7 @@ const G={
   hand:80
 };
 
+const ES=1.32;
 /* 小人身體分區（相對小人中心） */
 const ZONES=[
   {id:'head', dy:-62, r:26, mult:3, name:'頭'},
@@ -113,8 +114,8 @@ function swing(p){
   const ex=G.effigy.x, ey=G.effigy.y;
   let hit=null;
   for(const z of ZONES){
-    const zx=ex+(z.dx||0), zy=ey+(z.dy||0);
-    if(Math.hypot(p.x-zx,p.y-zy)<z.r+10){ hit=z; break; }
+    const zx=ex+(z.dx||0)*ES, zy=ey+(z.dy||0)*ES;
+    if(Math.hypot(p.x-zx,p.y-zy)<z.r*ES+12){ hit=z; break; }
   }
   // 貴人（唔好打）
   if(G.guest && Math.hypot(p.x-G.guest.x,p.y-G.guest.y)<34){
@@ -138,10 +139,14 @@ function swing(p){
   G.score+=gain;
   G.effigy.hp--; G.effigy.shake=1; G.shake=0.35+hit.mult*0.06;
   G.slipper.angle=(Math.random()-0.5)*0.5;
+  G.flash={x:G.effigy.x+(hit.dx||0)*ES, y:G.effigy.y+(hit.dy||0)*ES, life:1};
+  G.lines=[];
+  for(let i=0;i<7;i++){ const a=Math.random()*6.28; G.lines.push({x:G.effigy.x+(hit.dx||0)*ES,y:G.effigy.y+(hit.dy||0)*ES,a:a,r:6}); }
+  if(Math.random()<0.5) G.floats.push({x:G.effigy.x,y:G.effigy.y-100*ES,txt:'啪！',col:'#fff3d6',life:.5,vy:-20});
   noise(0.1,0.32); tone(180,60,0.12,'square',0.08);
   // 紙碎
   for(let i=0;i<10;i++){
-    G.parts.push({x:G.effigy.x+(hit.dx||0), y:G.effigy.y+(hit.dy||0),
+    G.parts.push({x:G.effigy.x+(hit.dx||0)*ES, y:G.effigy.y+(hit.dy||0)*ES,
       vx:(Math.random()-0.5)*260, vy:-Math.random()*220-40, life:1, col:Math.random()<0.8?'#f3e7cf':'#d9b56b'});
   }
   G.floats.push({x:p.x,y:p.y-20,txt:'+'+gain+(G.combo>2?'  ×'+G.combo:''),col:'#ffcf6b',life:.9,vy:-60});
@@ -170,6 +175,8 @@ function update(dt){
   G.effigy.shake=Math.max(0,G.effigy.shake-dt*5);
   G.effigy.rot+=(0-(G.effigy.rot))*Math.min(1,dt*10);
   G.slipper.swing=Math.max(0,G.slipper.swing-dt*6);
+  if(G.flash){ G.flash.life-=dt*5; if(G.flash.life<=0) G.flash=null; }
+  if(G.lines){ for(const l of G.lines) l.r+=dt*430; if(G.lines[0]&&G.lines[0].r>70) G.lines=null; }
 
   // 按住連打（每 0.16 秒）
   if(down){
@@ -232,6 +239,24 @@ function draw(){
   ctx.fillStyle='rgba(255,255,255,.04)';
   for(let y=20;y<H;y+=46) ctx.fillRect(0,y,54,2), ctx.fillRect(W-54,y,54,2);
 
+  // 橋頂橫樑
+  ctx.fillStyle='#1c1714'; ctx.fillRect(0,0,W,26);
+  ctx.fillStyle='rgba(255,255,255,.05)';
+  for(let x=8;x<W;x+=22) ctx.fillRect(x,18,12,2);
+
+  // 紅布幡（右橋墩）
+  ctx.fillStyle='#7d1f18'; ctx.fillRect(W-50,40,26,150);
+  ctx.fillStyle='#a32b20'; ctx.fillRect(W-50,40,4,150);
+  ctx.fillStyle='#ffd166'; ctx.font='bold 15px "Noto Sans TC",sans-serif'; ctx.textAlign='center';
+  ['打','小','人'].forEach((ch,i)=>ctx.fillText(ch,W-37,72+i*26));
+  ctx.textAlign='left';
+
+  // 金銀衣紙堆（左下）
+  for(let i=0;i<3;i++){
+    ctx.fillStyle=i%2?'#c9a227':'#d8cfae';
+    ctx.fillRect(12, H-120-i*7, 34-i*6, 6);
+  }
+
   // 紅布神壇
   ctx.fillStyle='#5c1a16'; ctx.fillRect(60,H*0.60,W-120,10);
   ctx.fillStyle='#7d241d'; ctx.fillRect(60,H*0.60,W-120,4);
@@ -251,6 +276,17 @@ function draw(){
   }
 
   drawEffigy();
+  if(G.flash){
+    const f=G.flash, a=Math.max(0,f.life);
+    ctx.fillStyle='rgba(255,255,220,'+(0.55*a)+')';
+    ctx.beginPath(); ctx.arc(f.x,f.y,42*(1.3-a*0.6),0,7); ctx.fill();
+  }
+  if(G.lines){
+    ctx.strokeStyle='rgba(255,240,200,.75)'; ctx.lineWidth=2;
+    for(const l of G.lines){ ctx.beginPath();
+      ctx.moveTo(l.x+Math.cos(l.a)*l.r, l.y+Math.sin(l.a)*l.r);
+      ctx.lineTo(l.x+Math.cos(l.a)*(l.r+18), l.y+Math.sin(l.a)*(l.r+18)); ctx.stroke(); }
+  }
 
   // 貴人紙
   if(G.guest){
@@ -290,7 +326,7 @@ function draw(){
 function drawEffigy(){
   const e=G.effigy;
   const sx=e.shake? (Math.random()-.5)*10*e.shake : 0;
-  ctx.save(); ctx.translate(e.x+sx, e.y); ctx.rotate((Math.random()-.5)*0.04*e.shake);
+  ctx.save(); ctx.translate(e.x+sx, e.y); ctx.rotate((Math.random()-.5)*0.04*e.shake); ctx.scale(ES,ES);
   // 影
   ctx.fillStyle='rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(0,46,26,7,0,0,7); ctx.fill();
   // 紙身
