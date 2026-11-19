@@ -314,6 +314,7 @@ function pick(ev){
 }
 renderer.domElement.addEventListener('pointerdown', pick);
 
+
 /* ---------- 遊戲邏輯 ---------- */
 const DRINKS=["奶茶","咖啡","檸茶","檸水","好立克","阿華田"];
 const FOODS=["煎蛋多士","餐蛋麵","菠蘿油","火腿通粉","西多士","蛋治"];
@@ -545,6 +546,19 @@ function loop(now){
 }
 idx=-1; next(); drawTray(); stats();
 requestAnimationFrame(loop);
+
+/* ---------- Previz 鏡位（?shot=1 / 2） ---------- */
+setTimeout(()=>{
+  const q = new URLSearchParams(location.search);
+  if(!q.has('shot')) return;
+  document.querySelectorAll('.ui, #sheet, #toast, #hint').forEach(e=>e.style.display='none');
+  const cam = {1:{p:[0.2,2.6,9.6], t:[0,1.25,-0.6]}, 2:{p:[3.0,1.85,4.9], t:[1.5,1.45,2.05]}}[q.get('shot')];
+  if(cam){
+    camera.position.set(...cam.p); camera.lookAt(...cam.t);
+    custState='idle'; cust.position.set(1.55,0,2.1); cust.rotation.y=-0.35;
+  }
+},0);
+
 
 /* 自動示範 ?auto=1 */
 if(location.search.includes("auto")){
