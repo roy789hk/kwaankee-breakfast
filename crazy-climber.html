@@ -32,7 +32,7 @@ const cv = document.getElementById('c'), ctx = cv.getContext('2d');
 const W = 360, H = 640;
 const COLS = 5, COLW = 64, X0 = (W - COLS*COLW)/2;   // 大廈窗戶網格
 const FH = 52;                                        // 每層高
-const TOP_FLOOR = 26;                                 // 爬 26 層就過關
+const TOP_FLOOR = 40;                                 // 爬 26 層就過關
 
 const S = {           // 遊戲狀態
   running:false, over:false, win:false,
@@ -179,7 +179,7 @@ function update(dt){
     }
   }
   // 跌落物
-  if(S.t>2.5 && Math.random() < dt*0.45) spawnObject();
+  if(S.t>2.5 && Math.random() < dt*0.6) spawnObject();
   for(let i=S.objects.length-1;i>=0;i--){
     const o=S.objects[i];
     o.y += o.vy*52*dt;
